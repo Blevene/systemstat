@@ -48,8 +48,8 @@ fn run(terminal: &mut Term) -> io::Result<()> {
         if event::poll(POLL)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    let ctrl_c =
-                        key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL);
+                    let ctrl_c = key.code == KeyCode::Char('c')
+                        && key.modifiers.contains(KeyModifiers::CONTROL);
                     if ctrl_c || matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) {
                         return Ok(());
                     }

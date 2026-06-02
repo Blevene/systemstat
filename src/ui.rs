@@ -47,11 +47,20 @@ fn build(m: &Metrics, h: &crate::metrics::History, width: usize) -> Vec<Line<'st
 
     // CPU / THERMAL
     out.push(header("CPU / THERMAL"));
-    out.push(bar_row("CPU Load", format!("{:.1} %", m.cpu_load), m.cpu_load, m.cpu_load < 90.0, width));
+    out.push(bar_row(
+        "CPU Load",
+        format!("{:.1} %", m.cpu_load),
+        m.cpu_load,
+        m.cpu_load < 90.0,
+        width,
+    ));
     out.push(cores_row(&m.cores));
     out.push(Line::from(vec![
         lbl("CPU Temp"),
-        Span::styled(format!("{:>8}   ", format!("{:.1} °C", m.cpu_temp)), Style::default().fg(WHITE)),
+        Span::styled(
+            format!("{:>8}   ", format!("{:.1} °C", m.cpu_temp)),
+            Style::default().fg(WHITE),
+        ),
         status(m.cpu_temp < 70.0),
     ]));
     out.push(spark_row("CPU Trend", &h.cpu, width));
@@ -76,9 +85,27 @@ fn build(m: &Metrics, h: &crate::metrics::History, width: usize) -> Vec<Line<'st
 
     // MEMORY / STORAGE
     out.push(header("MEMORY / STORAGE"));
-    out.push(bar_row("RAM Usage", format!("{:.1} %", m.ram_pct), m.ram_pct, m.ram_pct < 90.0, width));
-    out.push(bar_row("Swap Usage", format!("{:.1} %", m.swap_pct), m.swap_pct, m.swap_pct < 80.0, width));
-    out.push(bar_row("Disk Usage", format!("{:.1} %", m.disk_pct), m.disk_pct, m.disk_pct < 90.0, width));
+    out.push(bar_row(
+        "RAM Usage",
+        format!("{:.1} %", m.ram_pct),
+        m.ram_pct,
+        m.ram_pct < 90.0,
+        width,
+    ));
+    out.push(bar_row(
+        "Swap Usage",
+        format!("{:.1} %", m.swap_pct),
+        m.swap_pct,
+        m.swap_pct < 80.0,
+        width,
+    ));
+    out.push(bar_row(
+        "Disk Usage",
+        format!("{:.1} %", m.disk_pct),
+        m.disk_pct,
+        m.disk_pct < 90.0,
+        width,
+    ));
     out.push(kv("Disk Read", format!("{:.2} KiB/s", m.disk_read_kib)));
     out.push(kv("Disk Write", format!("{:.2} KiB/s", m.disk_write_kib)));
     out.push(sep(width));
@@ -87,30 +114,73 @@ fn build(m: &Metrics, h: &crate::metrics::History, width: usize) -> Vec<Line<'st
     out.push(header("NETWORK"));
     out.push(kv("Sent", format!("{:.2} KiB/s", m.net_sent_kib)));
     out.push(kv("Received", format!("{:.2} KiB/s", m.net_recv_kib)));
-    out.push(kv("Net Total", format!("{:.2} KiB/s", m.net_sent_kib + m.net_recv_kib)));
+    out.push(kv(
+        "Net Total",
+        format!("{:.2} KiB/s", m.net_sent_kib + m.net_recv_kib),
+    ));
     out.push(spark_row("Net Trend", &h.net, width));
     out.push(sep(width));
 
     // POWER / HEALTH
     out.push(header("POWER / HEALTH"));
-    out.push(flag_ctx("Thermal Warn", m.health.thermal_warn, true, format!("{:.0} °C", m.cpu_temp)));
+    out.push(flag_ctx(
+        "Thermal Warn",
+        m.health.thermal_warn,
+        true,
+        format!("{:.0} °C", m.cpu_temp),
+    ));
     out.push(flag_ctx(
         "Freq Scaled",
         m.health.freq_scaled,
         false,
-        format!("{:.2}/{:.2} GHz", m.cpu_freq_mhz as f64 / 1000.0, m.cpu_max_freq_mhz as f64 / 1000.0),
+        format!(
+            "{:.2}/{:.2} GHz",
+            m.cpu_freq_mhz as f64 / 1000.0,
+            m.cpu_max_freq_mhz as f64 / 1000.0
+        ),
     ));
-    out.push(flag_ctx("CPU Pressure", m.health.cpu_pressure, true, format!("{:.2} /core", m.load_per_core)));
-    out.push(flag_ctx("Mem Pressure", m.health.mem_pressure, true, format!("{:.0}% RAM", m.ram_pct)));
+    out.push(flag_ctx(
+        "CPU Pressure",
+        m.health.cpu_pressure,
+        true,
+        format!("{:.2} /core", m.load_per_core),
+    ));
+    out.push(flag_ctx(
+        "Mem Pressure",
+        m.health.mem_pressure,
+        true,
+        format!("{:.0}% RAM", m.ram_pct),
+    ));
     out.push(spark_row("Health Trend", &h.health, width));
     out.push(spark_row("Temp Trend", &h.temp, width));
-    out.push(bar_row("System Health", format!("{:.0} %", m.system_health), m.system_health, m.system_health >= 80.0, width));
-    out.push(bar_row("Storage Health", format!("{:.0} %", m.storage_health), m.storage_health, m.storage_health >= 80.0, width));
+    out.push(bar_row(
+        "System Health",
+        format!("{:.0} %", m.system_health),
+        m.system_health,
+        m.system_health >= 80.0,
+        width,
+    ));
+    out.push(bar_row(
+        "Storage Health",
+        format!("{:.0} %", m.storage_health),
+        m.storage_health,
+        m.storage_health >= 80.0,
+        width,
+    ));
     out.push(Line::from(vec![
-        Span::styled(format!("{:<w$}", "Health Why:", w = LBL), Style::default().fg(CYAN)),
+        Span::styled(
+            format!("{:<w$}", "Health Why:", w = LBL),
+            Style::default().fg(CYAN),
+        ),
         Span::styled(m.health_why.clone(), Style::default().fg(YELLOW)),
     ]));
-    out.push(bar_row("Stability Avg", format!("{:.1} %", m.stability_avg), m.stability_avg, m.stability_avg >= 80.0, width));
+    out.push(bar_row(
+        "Stability Avg",
+        format!("{:.1} %", m.stability_avg),
+        m.stability_avg,
+        m.stability_avg >= 80.0,
+        width,
+    ));
     out.push(sep(width));
 
     // DOCTOR INSIGHT
@@ -118,13 +188,31 @@ fn build(m: &Metrics, h: &crate::metrics::History, width: usize) -> Vec<Line<'st
     out.push(doc_row("Cooling", &m.cooling, "Power", &m.power));
     out.push(doc_row("Workload", &m.workload, "Storage", &m.storage_note));
     out.push(doc_row("System", &m.model, "Arch", &m.arch));
-    out.push(doc_row("Total RAM", &format!("{:.1} GiB", m.total_ram_gib), "Alerts", &m.alerts.to_string()));
-    out.push(kv("Top CPU Proc", format!("{} {:.1}%", m.top_cpu.0, m.top_cpu.1)));
-    out.push(kv("Top RAM Proc", format!("{} {:.1}%", m.top_ram.0, m.top_ram.1)));
+    out.push(doc_row(
+        "Total RAM",
+        &format!("{:.1} GiB", m.total_ram_gib),
+        "Alerts",
+        &m.alerts.to_string(),
+    ));
+    out.push(kv(
+        "Top CPU Proc",
+        format!("{} {:.1}%", m.top_cpu.0, m.top_cpu.1),
+    ));
+    out.push(kv(
+        "Top RAM Proc",
+        format!("{} {:.1}%", m.top_ram.0, m.top_ram.1),
+    ));
     out.push(Line::from(vec![
-        Span::styled(format!("{:<14}", "Active Alerts"), Style::default().fg(GRAY)),
         Span::styled(
-            if m.alerts == 0 { "none".to_string() } else { format!("{} active", m.alerts) },
+            format!("{:<14}", "Active Alerts"),
+            Style::default().fg(GRAY),
+        ),
+        Span::styled(
+            if m.alerts == 0 {
+                "none".to_string()
+            } else {
+                format!("{} active", m.alerts)
+            },
             Style::default().fg(if m.alerts == 0 { WHITE } else { RED }),
         ),
     ]));
@@ -146,21 +234,24 @@ fn header(text: &str) -> Line<'static> {
 }
 
 fn sep(width: usize) -> Line<'static> {
-    Line::from(Span::styled(
-        "─".repeat(width),
-        Style::default().fg(GRAY),
-    ))
+    Line::from(Span::styled("─".repeat(width), Style::default().fg(GRAY)))
 }
 
 fn kv(label: &str, value: String) -> Line<'static> {
-    Line::from(vec![lbl(label), Span::styled(value, Style::default().fg(WHITE))])
+    Line::from(vec![
+        lbl(label),
+        Span::styled(value, Style::default().fg(WHITE)),
+    ])
 }
 
 fn status(ok: bool) -> Span<'static> {
     if ok {
         Span::styled("OK", Style::default().fg(GREEN))
     } else {
-        Span::styled("WARN", Style::default().fg(RED).add_modifier(Modifier::BOLD))
+        Span::styled(
+            "WARN",
+            Style::default().fg(RED).add_modifier(Modifier::BOLD),
+        )
     }
 }
 
@@ -174,7 +265,10 @@ fn flag_ctx(label: &str, on: bool, warn: bool, ctx: String) -> Line<'static> {
     };
     Line::from(vec![
         lbl(label),
-        Span::styled(format!("    {:<5}", txt), Style::default().fg(col).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            format!("    {:<5}", txt),
+            Style::default().fg(col).add_modifier(Modifier::BOLD),
+        ),
         Span::styled(format!("({})", ctx), Style::default().fg(GRAY)),
     ])
 }
@@ -186,7 +280,10 @@ fn cores_row(cores: &[f64]) -> Line<'static> {
             format!("{}: ", i + 1),
             Style::default().fg(CYAN).add_modifier(Modifier::BOLD),
         ));
-        spans.push(Span::styled(format!("{:>3.0}%  ", c), Style::default().fg(WHITE)));
+        spans.push(Span::styled(
+            format!("{:>3.0}%  ", c),
+            Style::default().fg(WHITE),
+        ));
     }
     Line::from(spans)
 }
