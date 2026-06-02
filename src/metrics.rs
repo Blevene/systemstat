@@ -66,7 +66,9 @@ pub struct Metrics {
     pub stability_avg: f64,
     pub health_why: String,
     pub alerts: u32,
-    // doctor insight
+    // insights
+    pub status: String,
+    pub advisories: Vec<String>,
     pub cooling: String,
     pub power: String,
     pub workload: String,
@@ -105,6 +107,8 @@ impl Default for Metrics {
             stability_avg: 100.0,
             health_why: "nominal".into(),
             alerts: 0,
+            status: "Healthy".into(),
+            advisories: Vec::new(),
             cooling: "—".into(),
             power: "—".into(),
             workload: "—".into(),
@@ -283,11 +287,14 @@ impl Collector {
         m.storage_health = derive_storage_health(m.disk_pct);
         m.alerts = count_alerts(m);
 
-        // doctor strings.
+        // insight strings.
         m.cooling = cooling_label(m.cpu_temp).into();
         m.power = power_label(&m.health).into();
         m.workload = workload_label(m.cpu_load).into();
         m.storage_note = storage_note_label(m.disk_pct).into();
+        m.status = overall_status(m.system_health, m.storage_health, m.alerts).into();
+        let adv = advisories(m);
+        m.advisories = adv;
 
         // ---- history (push after this tick's values are settled) ----
         push_capped(&mut self.history.cpu, m.cpu_load);
@@ -601,6 +608,46 @@ fn storage_note_label(disk_pct: f64) -> &'static str {
     }
 }
 
+/// One-word overall verdict from the worst health score and the alert count.
+fn overall_status(system_health: f64, storage_health: f64, alerts: u32) -> &'static str {
+    let worst = system_health.min(storage_health);
+    if worst < 50.0 || alerts >= 3 {
+        "Critical"
+    } else if worst < 80.0 || alerts >= 1 {
+        "Degraded"
+    } else {
+        "Healthy"
+    }
+}
+
+/// Human-readable, actionable notes for whatever is currently amiss. Empty when
+/// everything is nominal. Reads already-populated `Metrics` fields.
+fn advisories(m: &Metrics) -> Vec<String> {
+    let mut v = Vec::new();
+    if m.health.thermal_warn {
+        v.push(format!(
+            "Running hot ({:.0}°C) — improve cooling",
+            m.cpu_temp
+        ));
+    }
+    if m.cpu_load > 90.0 || m.health.cpu_pressure {
+        v.push(format!("High CPU load ({:.2}/core)", m.load_per_core));
+    }
+    if m.health.mem_pressure {
+        v.push(format!("Memory pressure ({:.0}% RAM)", m.ram_pct));
+    }
+    if m.swap_pct > 5.0 {
+        v.push(format!("Swapping in use ({:.0}%)", m.swap_pct));
+    }
+    if m.disk_pct > 90.0 {
+        v.push(format!(
+            "Disk nearly full ({:.0}%) — free space",
+            m.disk_pct
+        ));
+    }
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -751,6 +798,45 @@ eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000";
         m.cpu_load = 95.0; // > 90
         m.disk_pct = 95.0; // > 90
         assert_eq!(count_alerts(&m), 3);
+    }
+
+    #[test]
+    fn overall_status_tiers() {
+        assert_eq!(overall_status(100.0, 100.0, 0), "Healthy");
+        // one alert (or a sub-80 score) drops to Degraded
+        assert_eq!(overall_status(100.0, 100.0, 1), "Degraded");
+        assert_eq!(overall_status(75.0, 100.0, 0), "Degraded");
+        // a very low score or 3+ alerts is Critical
+        assert_eq!(overall_status(40.0, 100.0, 0), "Critical");
+        assert_eq!(overall_status(100.0, 100.0, 3), "Critical");
+        // worst-of the two health scores drives it
+        assert_eq!(overall_status(100.0, 45.0, 0), "Critical");
+    }
+
+    #[test]
+    fn advisories_are_actionable_and_empty_when_nominal() {
+        // nominal system -> no advisories
+        let ok = metrics_with(45.0, 0.3, 10.0, false);
+        assert!(advisories(&ok).is_empty());
+
+        // hot + memory pressure + swapping + full disk -> four specific notes
+        let m = Metrics {
+            cpu_temp: 85.0,
+            ram_pct: 92.0,
+            disk_pct: 95.0,
+            swap_pct: 12.0,
+            health: HealthFlags {
+                thermal_warn: true,
+                mem_pressure: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let adv = advisories(&m);
+        assert!(adv.iter().any(|a| a.contains("hot")));
+        assert!(adv.iter().any(|a| a.contains("Memory pressure")));
+        assert!(adv.iter().any(|a| a.contains("Swapping")));
+        assert!(adv.iter().any(|a| a.contains("Disk nearly full")));
     }
 
     #[test]

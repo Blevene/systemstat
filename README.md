@@ -3,8 +3,8 @@
 [![CI](https://github.com/Blevene/systemstat/actions/workflows/ci.yml/badge.svg)](https://github.com/Blevene/systemstat/actions/workflows/ci.yml)
 
 A single-binary terminal system-monitor dashboard: CPU and thermal, memory and
-storage, network throughput, a derived power/health panel, and a "doctor insight"
-summary — all refreshed once a second.
+storage, network throughput, a derived power/health panel, and an "insights"
+summary (overall status, advisories, top processes) — all refreshed once a second.
 
 Cross-platform metrics come from `sysinfo`; richer Linux signals (thermal zone,
 cpufreq current/max, `/proc/diskstats`, default route) are read directly when
@@ -18,48 +18,50 @@ degrade gracefully when a signal is unavailable.
 │SystemStat                                                           Interface: eno1 | Refresh: 1s│
 │──────────────────────────────────────────────────────────────────────────────────────────────────│
 │CPU / THERMAL                                                                                     │
-│CPU Load       26.9 % ████████████████████████████████████████████████████████████  OK            │
-│CPU Cores    1:  35%  2:  30%  3:  28%  4:  33%  5:  35%  6:  24%  7:  24%  8:  20%  9:  26%  10: │
-│CPU Temp      50.0 °C   OK                                                                        │
-│CPU Trend    █▇▇▇                                                                                 │
+│CPU Load       22.1 % ████████████████████████████████████████████████████████████  OK            │
+│CPU Cores    1:  25%  2:  22%  3:  33%  4:  30%  5:  23%  6:  29%  7:  15%  8:  12%  9:  20%  10: │
+│CPU Temp      51.0 °C   OK                                                                        │
+│CPU Trend    █▅▄▃                                                                                 │
 │RAM Trend    ████                                                                                 │
-│CPU Freq     1769 MHz                                                                             │
-│Uptime       7h 6m 26s                                                                            │
-│Load Avg     2.93 / 5.25 / 7.25 1/5/15                                                            │
+│CPU Freq     2140 MHz                                                                             │
+│Uptime       7h 58m 41s                                                                           │
+│Load Avg     4.95 / 3.61 / 3.32 1/5/15                                                            │
 │──────────────────────────────────────────────────────────────────────────────────────────────────│
 │MEMORY / STORAGE                                                                                  │
-│RAM Usage      41.2 % ████████████████████████████████████████████████████████████  OK            │
+│RAM Usage      42.2 % ████████████████████████████████████████████████████████████  OK            │
 │Swap Usage      0.0 % ████████████████████████████████████████████████████████████  OK            │
-│Disk Usage     79.3 % ████████████████████████████████████████████████████████████  OK            │
+│Disk Usage     82.2 % ████████████████████████████████████████████████████████████  OK            │
 │Disk Read    0.00 KiB/s                                                                           │
-│Disk Write   30.77 KiB/s                                                                          │
+│Disk Write   0.00 KiB/s                                                                           │
 │──────────────────────────────────────────────────────────────────────────────────────────────────│
 │NETWORK                                                                                           │
-│Sent         22.66 KiB/s                                                                          │
-│Received     12.44 KiB/s                                                                          │
-│Net Total    35.10 KiB/s                                                                          │
-│Net Trend    █▇▆▆                                                                                 │
+│Sent         909.57 KiB/s                                                                         │
+│Received     17.01 KiB/s                                                                          │
+│Net Total    926.58 KiB/s                                                                         │
+│Net Trend    ▁█▆▆                                                                                 │
 │──────────────────────────────────────────────────────────────────────────────────────────────────│
 │POWER / HEALTH                                                                                    │
-│Thermal Warn     NO   (50 °C)                                                                     │
-│Freq Scaled      YES  (1.77/3.20 GHz)                                                             │
-│CPU Pressure     NO   (0.24 /core)                                                                │
-│Mem Pressure     NO   (41% RAM)                                                                   │
+│Thermal Warn     NO   (51 °C)                                                                     │
+│Freq Scaled      YES  (2.14/3.20 GHz)                                                             │
+│CPU Pressure     NO   (0.41 /core)                                                                │
+│Mem Pressure     NO   (42% RAM)                                                                   │
 │Health Trend ████                                                                                 │
 │Temp Trend   ████                                                                                 │
 │System Health   100 % ████████████████████████████████████████████████████████████  OK            │
-│Storage Health    85 % ████████████████████████████████████████████████████████████  OK           │
+│Storage Health    81 % ████████████████████████████████████████████████████████████  OK           │
 │Health Why:  nominal                                                                              │
 │Stability Avg 100.0 % ████████████████████████████████████████████████████████████  OK            │
 │──────────────────────────────────────────────────────────────────────────────────────────────────│
-│DOCTOR INSIGHT                                                                                    │
+│INSIGHTS                                                                                          │
+│Status       Healthy                                                                              │
 │Cooling    Good                           Power    Nominal                                        │
 │Workload   Light                          Storage  Filling                                        │
 │System     Intel Xeon E5-2620 v3          Arch     x86_64                                         │
 │Total RAM  62.7 GiB                       Alerts   0                                              │
-│Top CPU Proc claude 39.9%                                                                         │
-│Top RAM Proc JNA Cleaner 1.5%                                                                     │
-│Active Alerts none                                                                                │
+│Top CPU Proc claude 40.0%                                                                         │
+│Top RAM Proc opensearch[438d 1.5%                                                                 │
+│Advisories   nominal                                                                              │
+│                                                                                                  │
 │                                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -106,10 +108,10 @@ binary, target the `musl` variants (e.g. `aarch64-unknown-linux-musl`).
 
 ## Notes
 
-- The POWER/HEALTH flags (thermal / freq-scaled / CPU pressure / mem pressure)
-  and the "health"/"stability" figures and doctor strings are derived heuristics
-  (temperature, cpufreq, load, memory, disk). Tune the thresholds in
-  `src/metrics.rs::refresh`.
+- INSIGHTS (overall status + advisories), the POWER/HEALTH flags (thermal /
+  freq-scaled / CPU pressure / mem pressure), and the health/stability figures are
+  derived heuristics (temperature, cpufreq, load, memory, disk). Tune the
+  thresholds in `src/metrics.rs::refresh`.
 - CPU and network rates need two samples, so the first second after launch may read
   low/zero before stabilizing.
 - Truecolor terminals render the olive bar background best; on a 256-color terminal

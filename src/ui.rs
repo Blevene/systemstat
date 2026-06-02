@@ -183,8 +183,9 @@ fn build(m: &Metrics, h: &crate::metrics::History, width: usize) -> Vec<Line<'st
     ));
     out.push(sep(width));
 
-    // DOCTOR INSIGHT
-    out.push(header("DOCTOR INSIGHT"));
+    // INSIGHTS
+    out.push(header("INSIGHTS"));
+    out.push(status_row(&m.status));
     out.push(doc_row("Cooling", &m.cooling, "Power", &m.power));
     out.push(doc_row("Workload", &m.workload, "Storage", &m.storage_note));
     out.push(doc_row("System", &m.model, "Arch", &m.arch));
@@ -202,20 +203,7 @@ fn build(m: &Metrics, h: &crate::metrics::History, width: usize) -> Vec<Line<'st
         "Top RAM Proc",
         format!("{} {:.1}%", m.top_ram.0, m.top_ram.1),
     ));
-    out.push(Line::from(vec![
-        Span::styled(
-            format!("{:<14}", "Active Alerts"),
-            Style::default().fg(GRAY),
-        ),
-        Span::styled(
-            if m.alerts == 0 {
-                "none".to_string()
-            } else {
-                format!("{} active", m.alerts)
-            },
-            Style::default().fg(if m.alerts == 0 { WHITE } else { RED }),
-        ),
-    ]));
+    out.extend(advisory_rows(&m.advisories));
 
     out
 }
@@ -357,6 +345,43 @@ fn doc_row(llabel: &str, lval: &str, rlabel: &str, rval: &str) -> Line<'static> 
         Span::styled(format!("{:<9}", rlabel), Style::default().fg(GRAY)),
         Span::styled(rval.to_string(), Style::default().fg(WHITE)),
     ])
+}
+
+/// Overall verdict, colored by severity.
+fn status_row(status: &str) -> Line<'static> {
+    let col = match status {
+        "Healthy" => GREEN,
+        "Degraded" => YELLOW,
+        _ => RED,
+    };
+    Line::from(vec![
+        lbl("Status"),
+        Span::styled(
+            status.to_string(),
+            Style::default().fg(col).add_modifier(Modifier::BOLD),
+        ),
+    ])
+}
+
+/// Render the advisories list — a "nominal" line when clear, else one bullet each.
+fn advisory_rows(advisories: &[String]) -> Vec<Line<'static>> {
+    if advisories.is_empty() {
+        return vec![Line::from(vec![
+            lbl("Advisories"),
+            Span::styled("nominal", Style::default().fg(GREEN)),
+        ])];
+    }
+    let mut rows = vec![Line::from(Span::styled(
+        "Advisories",
+        Style::default().fg(GRAY),
+    ))];
+    for a in advisories {
+        rows.push(Line::from(vec![
+            Span::styled("  • ", Style::default().fg(RED)),
+            Span::styled(a.clone(), Style::default().fg(YELLOW)),
+        ]));
+    }
+    rows
 }
 
 fn two_sided(left: &str, right: &str, width: usize, ls: Style, rs: Style) -> Line<'static> {
