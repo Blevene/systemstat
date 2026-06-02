@@ -1,0 +1,17 @@
+[package]
+name = "systemstat"
+version = "0.1.0"
+edition = "2021"
+description = "SystemStat — a terminal system-monitor dashboard (Raspberry Pi friendly)"
+
+[dependencies]
+ratatui = "0.26"
+crossterm = "0.27"
+sysinfo = "0.30"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+panic = "abort"
+codegen-units = 1

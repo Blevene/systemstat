@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SystemStat — live preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#070708; --term:#0a0b0c; --edge:#1c1f22;
+    --cyn:#33c6ff; --wht:#e6e6e6; --gry:#7d8590;
+    --yel:#f5e642; --olv:#3a3a06; --red:#ff4d3d; --grn:#56d364;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #15171b 0%, var(--bg) 60%),
+      var(--bg);
+    color:var(--wht);
+    font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    display:flex;flex-direction:column;align-items:center;
+    padding:28px 16px 48px;min-height:100%;
+  }
+  .controls{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;justify-content:center}
+  .controls button{
+    font-family:inherit;font-size:13px;letter-spacing:.02em;
+    color:var(--gry);background:#101316;border:1px solid var(--edge);
+    padding:8px 14px;border-radius:8px;cursor:pointer;transition:.15s;
+  }
+  .controls button:hover{color:var(--wht);border-color:#2c3136}
+  .controls button.active{color:#06202b;background:var(--cyn);border-color:var(--cyn);font-weight:700}
+  .window{
+    width:min(820px,100%);
+    background:var(--term);
+    border:1px solid var(--edge);
+    border-radius:12px;
+    box-shadow:0 0 0 1px #000, 0 30px 80px -20px rgba(0,0,0,.8), 0 0 60px -30px var(--cyn);
+    overflow:hidden;
+  }
+  .titlebar{
+    display:flex;align-items:center;gap:8px;
+    padding:10px 14px;background:#0d0f11;border-bottom:1px solid var(--edge);
+  }
+  .dot{width:11px;height:11px;border-radius:50%}
+  .dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+  .titlebar .name{margin-left:8px;color:var(--gry);font-size:12.5px}
+  .screen{position:relative;padding:14px 18px 18px}
+  .screen::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 3px);
+    mix-blend-mode:overlay;border-radius:0 0 12px 12px;
+  }
+  pre{
+    margin:0;font-size:13.5px;line-height:1.5;white-space:pre;
+    overflow-x:auto;text-shadow:0 0 2px rgba(255,255,255,.06);
+  }
+  .cyn{color:var(--cyn)} .cyn.b{font-weight:700}
+  .wht{color:var(--wht)} .gry{color:var(--gry)}
+  .yel{color:var(--yel)} .olv{color:var(--olv)}
+  .red{color:var(--red)} .redb{color:var(--red);font-weight:700}
+  .grn{color:var(--grn)} .valb{color:var(--wht);font-weight:700}
+  .caption{
+    width:min(820px,100%);margin-top:14px;color:var(--gry);
+    font-size:12.5px;line-height:1.6;
+  }
+  .caption b{color:var(--wht)}
+  .blink{animation:blink 1.1s steps(2,start) infinite}
+  @keyframes blink{to{opacity:0}}
+</style>
+</head>
+<body>
+  <div class="controls">
+    <button data-p="pi4" class="active">Raspberry Pi 4</button>
+    <button data-p="ubuntu">Ubuntu (x86)</button>
+    <button data-p="macos">macOS</button>
+  </div>
+
+  <div class="window">
+    <div class="titlebar">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="name" id="winname">pi@raspberrypi: ~/systemstat</span>
+    </div>
+    <div class="screen"><pre id="screen"></pre></div>
+  </div>
+
+  <div class="caption" id="caption"></div>
+
+<script>
+const W = 76, LBL = 13, BARW = 40, SPK = 40;
+const BLOCKS = ['▁','▂','▃','▄','▅','▆','▇','█'];
+
+const wave = (base, amp, phase=0, n=SPK) =>
+  Array.from({length:n}, (_,i) =>
+    Math.max(0, base + amp*Math.sin(i*0.45+phase) + amp*0.3*Math.sin(i*1.3)));
+const flat = (v, n=SPK) => Array.from({length:n}, () => v);
+
+const DATA = {
+  pi4: {
+    win: "pi@raspberrypi: ~/systemstat", iface: "wlan0",
+    load: 9.5, cores: [9,14,5,10], temp: "35.0", freq: 1500,
+    uptime: "8h 1m 31s", la: [0.72,0.80,0.76],
+    ram: 39.7, swap: 0.0, disk: 9.8, dread: "0.00", dwrite: "0.00",
+    sent: "0.27", recv: "0.21",
+    throttle: [false,false,false,false],
+    sysH: 98, stoH: 100, why: "All systems stable", stab: 95.6,
+    cooling:"Thermals stable", power:"Power delivery stable",
+    workload:"Mostly idle", storage:"Storage pressure low",
+    system:"Raspberry Pi 4 Model B Rev 1.2", arch:"aarch64",
+    totalRam:"3.7", alerts:0, topCpu:"chromium 18.5%", topRam:"chromium 14.4%",
+    spk:{cpu:wave(9,5),ram:wave(40,4,1),net:wave(0.4,0.3,2),health:flat(98),temp:wave(35,2,3)},
+    caption:'<b>Raspberry Pi 4 · Raspberry Pi OS</b> — full functionality. Throttling flags come from <b>vcgencmd get_throttled</b>; temperature and ARM clock from sysfs.'
+  },
+  ubuntu: {
+    win: "user@ubuntu: ~/systemstat", iface: "enp3s0",
+    load: 23.4, cores: [31,18,27,12,9,40,15,22], temp: "48.0", freq: 3200,
+    uptime: "2d 5h 12m 3s", la: [1.85,1.40,1.12],
+    ram: 54.2, swap: 3.1, disk: 61.5, dread: "124.50", dwrite: "38.20",
+    sent: "12.40", recv: "88.70",
+    throttle: [false,false,false,false],
+    sysH: 97, stoH: 100, why: "All systems stable", stab: 96.0,
+    cooling:"Thermals stable", power:"Power delivery stable",
+    workload:"Moderate load", storage:"Storage pressure moderate",
+    system:"linux host", arch:"x86_64",
+    totalRam:"31.2", alerts:0, topCpu:"firefox 42.1%", topRam:"firefox 9.8%",
+    spk:{cpu:wave(28,15),ram:wave(54,5,1),net:wave(60,40,2),health:flat(97),temp:wave(48,4,3)},
+    caption:'<b>x86 desktop · Ubuntu</b> — nearly full functionality: real CPU temp via the <b>x86_pkg_temp</b> thermal zone, real frequency, and disk I/O from <b>/proc/diskstats</b>. Throttling flags are Pi-only, so they always read NO.'
+  },
+  macos: {
+    win: "user@mac: ~/systemstat", iface: "en0",
+    load: 15.2, cores: [22,9,18,5,11,7,14,3], temp: "0.0", freq: 0,
+    uptime: "1d 3h 47m 9s", la: [2.10,1.95,1.80],
+    ram: 68.9, swap: 12.4, disk: 44.1, dread: "0.00", dwrite: "0.00",
+    sent: "6.20", recv: "31.50",
+    throttle: [false,false,false,false],
+    sysH: 100, stoH: 100, why: "All systems stable", stab: 99.1,
+    cooling:"Thermals stable", power:"Power delivery stable",
+    workload:"Mostly idle", storage:"Storage pressure low",
+    system:"macos host", arch:"aarch64",
+    totalRam:"16.0", alerts:0, topCpu:"WindowServer 12.3%", topRam:"Google Chrome 11.2%",
+    spk:{cpu:wave(15,8),ram:wave(68,5,1),net:wave(25,15,2),health:flat(100),temp:flat(0)},
+    caption:'<b>Apple Silicon · macOS</b> — core metrics work, but CPU temp, frequency, and disk I/O read <b>0</b> (no /proc or /sys, and components are typically empty on Apple Silicon). Note the "Thermals stable" line is therefore <b>not meaningful</b> here.'
+  }
+};
+
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const pad = (s,n) => esc(s) + ' '.repeat(Math.max(0, n - String(s).length));
+const padL = (s,n) => ' '.repeat(Math.max(0, n - String(s).length)) + esc(s);
+
+function bar(pct){
+  pct = Math.max(0, Math.min(100, pct));
+  const f = Math.round(pct/100*BARW);
+  return `<span class="yel">${'█'.repeat(f)}</span><span class="olv">${'█'.repeat(BARW-f)}</span>`;
+}
+function spark(arr){
+  const max = Math.max(1, ...arr);
+  return `<span class="red">` +
+    arr.map(v => BLOCKS[Math.min(7, Math.round(v/max*7))]).join('') + `</span>`;
+}
+const lbl = t => `<span class="gry">${pad(t,LBL)}</span>`;
+const sep = () => `<span class="gry">${'─'.repeat(W)}</span>`;
+const head = t => `<span class="cyn b">${esc(t)}</span>`;
+const status = ok => ok ? `<span class="grn">OK</span>` : `<span class="redb">WARN</span>`;
+
+function barRow(label,val,pct,ok){
+  return lbl(label) + `<span class="wht">${padL(val,8)} </span>` + bar(pct) + `  ` + status(ok);
+}
+function kv(label,val){ return lbl(label) + `<span class="wht">${esc(val)}</span>`; }
+function flagRow(label,on){
+  return lbl(label) + `<span class="${on?'redb':'wht'}">    ${on?'YES':'NO'}</span>`;
+}
+function spkRow(label,arr){ return lbl(label) + spark(arr); }
+
+function coresRow(cores){
+  let s = lbl("CPU Cores");
+  cores.forEach((c,i)=>{
+    s += `<span class="cyn b">${i+1}: </span><span class="wht">${padL(c,3)}%  </span>`;
+  });
+  return s;
+}
+function docRow(ll,lv,rl,rv){
+  const COL=42, leftLen = 11 + String(lv).length;
+  return `<span class="gry">${pad(ll,11)}</span><span class="wht">${esc(lv)}</span>` +
+         ' '.repeat(Math.max(0,COL-leftLen)) +
+         `<span class="gry">${pad(rl,9)}</span><span class="wht">${esc(rv)}</span>`;
+}
+function titleRow(left,right){
+  const used = left.length + right.length;
+  return `<span class="cyn b">${esc(left)}</span>` + ' '.repeat(Math.max(1,W-used)) +
+         `<span class="gry">${esc(right)}</span>`;
+}
+
+function render(p){
+  const d = DATA[p];
+  const L = [];
+  L.push(titleRow("SystemStat v2.1 Dashboard", `Interface: ${d.iface} | Refresh: 1s`));
+  L.push(sep());
+  L.push(head("CPU / THERMAL"));
+  L.push(barRow("CPU Load", d.load.toFixed(1)+" %", d.load, d.load<90));
+  L.push(coresRow(d.cores));
+  L.push(lbl("CPU Temp") + `<span class="wht">${padL(d.temp+" °C",8)}   </span>` + status(parseFloat(d.temp)<70));
+  L.push(spkRow("CPU Trend", d.spk.cpu));
+  L.push(spkRow("RAM Trend", d.spk.ram));
+  L.push(lbl("CPU Freq") + `<span class="cyn">${d.freq} MHz</span>`);
+  L.push(kv("Uptime", d.uptime));
+  L.push(lbl("Load Avg") + `<span class="wht">${d.la[0].toFixed(2)} / ${d.la[1].toFixed(2)} / ${d.la[2].toFixed(2)} </span><span class="gry">1/5/15</span>`);
+  L.push(sep());
+  L.push(head("MEMORY / STORAGE"));
+  L.push(barRow("RAM Usage", d.ram.toFixed(1)+" %", d.ram, d.ram<90));
+  L.push(barRow("Swap Usage", d.swap.toFixed(1)+" %", d.swap, d.swap<80));
+  L.push(barRow("Disk Usage", d.disk.toFixed(1)+" %", d.disk, d.disk<90));
+  L.push(kv("Disk Read", d.dread+" KiB/s"));
+  L.push(kv("Disk Write", d.dwrite+" KiB/s"));
+  L.push(sep());
+  L.push(head("NETWORK"));
+  L.push(kv("Sent", d.sent+" KiB/s"));
+  L.push(kv("Received", d.recv+" KiB/s"));
+  L.push(kv("Net Total", (parseFloat(d.sent)+parseFloat(d.recv)).toFixed(2)+" KiB/s"));
+  L.push(spkRow("Net Trend", d.spk.net));
+  L.push(sep());
+  L.push(head("POWER / HEALTH"));
+  L.push(flagRow("Throttled", d.throttle[0]));
+  L.push(flagRow("Freq Capped", d.throttle[1]));
+  L.push(flagRow("Occurred", d.throttle[2]));
+  L.push(flagRow("Undervoltage", d.throttle[3]));
+  L.push(spkRow("Health Trend", d.spk.health));
+  L.push(spkRow("Temp Trend", d.spk.temp));
+  L.push(barRow("System Health", d.sysH.toFixed(0)+" %", d.sysH, d.sysH>=80));
+  L.push(barRow("Storage Health", d.stoH.toFixed(0)+" %", d.stoH, d.stoH>=80));
+  L.push(`<span class="cyn">${pad("Health Why:",LBL)}</span><span class="yel">${esc(d.why)}</span>`);
+  L.push(barRow("Stability Avg", d.stab.toFixed(1)+" %", d.stab, d.stab>=80));
+  L.push(sep());
+  L.push(head("DOCTOR INSIGHT"));
+  L.push(docRow("Cooling", d.cooling, "Power", d.power));
+  L.push(docRow("Workload", d.workload, "Storage", d.storage));
+  L.push(docRow("System", d.system, "Arch", d.arch));
+  L.push(docRow("Total RAM", d.totalRam+" GiB", "Alerts", String(d.alerts)));
+  L.push(kv("Top CPU Proc", d.topCpu));
+  L.push(kv("Top RAM Proc", d.topRam));
+  L.push(`<span class="gry">${pad("Active Alerts",14)}</span><span class="${d.alerts?'redb':'wht'}">${d.alerts?d.alerts+" active":"none"}</span><span class="grn blink"> █</span>`);
+
+  document.getElementById('screen').innerHTML = L.join('\n');
+  document.getElementById('winname').textContent = d.win;
+  document.getElementById('caption').innerHTML = d.caption;
+}
+
+document.querySelectorAll('.controls button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.controls button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    render(b.dataset.p);
+  });
+});
+render('pi4');
+</script>
+</body>
+</html>
