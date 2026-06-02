@@ -15,36 +15,36 @@ degrade gracefully when a signal is unavailable.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
-│SystemStat v2.1 Dashboard                                            Interface: eno1 | Refresh: 1s│
+│SystemStat                                                           Interface: eno1 | Refresh: 1s│
 │──────────────────────────────────────────────────────────────────────────────────────────────────│
 │CPU / THERMAL                                                                                     │
-│CPU Load       90.0 % ████████████████████████████████████████████████████████████  OK            │
-│CPU Cores    1:  81%  2:  85%  3:  99%  4:  90%  5:  97%  6:  89%  7:  85%  8:  91%  9:  90%  10: │
-│CPU Temp      59.0 °C   OK                                                                        │
-│CPU Trend    ▇▆▆█                                                                                 │
+│CPU Load       26.9 % ████████████████████████████████████████████████████████████  OK            │
+│CPU Cores    1:  35%  2:  30%  3:  28%  4:  33%  5:  35%  6:  24%  7:  24%  8:  20%  9:  26%  10: │
+│CPU Temp      50.0 °C   OK                                                                        │
+│CPU Trend    █▇▇▇                                                                                 │
 │RAM Trend    ████                                                                                 │
-│CPU Freq     2599 MHz                                                                             │
-│Uptime       6h 50m 51s                                                                           │
-│Load Avg     10.90 / 10.21 / 8.54 1/5/15                                                          │
+│CPU Freq     1769 MHz                                                                             │
+│Uptime       7h 6m 26s                                                                            │
+│Load Avg     2.93 / 5.25 / 7.25 1/5/15                                                            │
 │──────────────────────────────────────────────────────────────────────────────────────────────────│
 │MEMORY / STORAGE                                                                                  │
-│RAM Usage      42.4 % ████████████████████████████████████████████████████████████  OK            │
+│RAM Usage      41.2 % ████████████████████████████████████████████████████████████  OK            │
 │Swap Usage      0.0 % ████████████████████████████████████████████████████████████  OK            │
 │Disk Usage     79.3 % ████████████████████████████████████████████████████████████  OK            │
 │Disk Read    0.00 KiB/s                                                                           │
-│Disk Write   5135.95 KiB/s                                                                        │
+│Disk Write   30.77 KiB/s                                                                          │
 │──────────────────────────────────────────────────────────────────────────────────────────────────│
 │NETWORK                                                                                           │
-│Sent         59.70 KiB/s                                                                          │
-│Received     12.26 KiB/s                                                                          │
-│Net Total    71.95 KiB/s                                                                          │
-│Net Trend    █▂▂▂                                                                                 │
+│Sent         22.66 KiB/s                                                                          │
+│Received     12.44 KiB/s                                                                          │
+│Net Total    35.10 KiB/s                                                                          │
+│Net Trend    █▇▆▆                                                                                 │
 │──────────────────────────────────────────────────────────────────────────────────────────────────│
 │POWER / HEALTH                                                                                    │
-│Thermal Warn     NO   (59 °C)                                                                     │
-│Freq Scaled      YES  (2.60/3.20 GHz)                                                             │
-│CPU Pressure     NO   (0.91 /core)                                                                │
-│Mem Pressure     NO   (42% RAM)                                                                   │
+│Thermal Warn     NO   (50 °C)                                                                     │
+│Freq Scaled      YES  (1.77/3.20 GHz)                                                             │
+│CPU Pressure     NO   (0.24 /core)                                                                │
+│Mem Pressure     NO   (41% RAM)                                                                   │
 │Health Trend ████                                                                                 │
 │Temp Trend   ████                                                                                 │
 │System Health   100 % ████████████████████████████████████████████████████████████  OK            │
@@ -53,12 +53,12 @@ degrade gracefully when a signal is unavailable.
 │Stability Avg 100.0 % ████████████████████████████████████████████████████████████  OK            │
 │──────────────────────────────────────────────────────────────────────────────────────────────────│
 │DOCTOR INSIGHT                                                                                    │
-│Cooling    Adequate                       Power    Nominal                                        │
-│Workload   Heavy                          Storage  Filling                                        │
+│Cooling    Good                           Power    Nominal                                        │
+│Workload   Light                          Storage  Filling                                        │
 │System     Intel Xeon E5-2620 v3          Arch     x86_64                                         │
 │Total RAM  62.7 GiB                       Alerts   0                                              │
-│Top CPU Proc python3 602.8%                                                                       │
-│Top RAM Proc python3 1.8%                                                                         │
+│Top CPU Proc claude 39.9%                                                                         │
+│Top RAM Proc JNA Cleaner 1.5%                                                                     │
 │Active Alerts none                                                                                │
 │                                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘

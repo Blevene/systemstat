@@ -195,7 +195,7 @@ function titleRow(left,right){
 function render(p){
   const d = DATA[p];
   const L = [];
-  L.push(titleRow("SystemStat v2.1 Dashboard", `Interface: ${d.iface} | Refresh: 1s`));
+  L.push(titleRow("SystemStat", `Interface: ${d.iface} | Refresh: 1s`));
   L.push(sep());
   L.push(head("CPU / THERMAL"));
   L.push(barRow("CPU Load", d.load.toFixed(1)+" %", d.load, d.load<90));

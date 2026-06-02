@@ -37,7 +37,7 @@ fn build(m: &Metrics, h: &crate::metrics::History, width: usize) -> Vec<Line<'st
 
     // Title bar
     out.push(two_sided(
-        "SystemStat v2.1 Dashboard",
+        "SystemStat",
         &format!("Interface: {} | Refresh: 1s", m.iface),
         width,
         Style::default().fg(CYAN).add_modifier(Modifier::BOLD),
