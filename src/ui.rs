@@ -332,13 +332,27 @@ fn spark_row(label: &str, data: &VecDeque<f64>, width: usize) -> Line<'static> {
     Line::from(vec![lbl(label), spark(data, sw)])
 }
 
+/// Truncate to at most `max` display chars, marking elision with `…`.
+fn truncate_fit(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else if max == 0 {
+        String::new()
+    } else {
+        let kept: String = s.chars().take(max - 1).collect();
+        format!("{kept}…")
+    }
+}
+
 fn doc_row(llabel: &str, lval: &str, rlabel: &str, rval: &str) -> Line<'static> {
     const COL: usize = 42;
+    // Keep at least one space before the right label, whatever the value length.
+    let lval = truncate_fit(lval, COL - 11 - 1);
     let left_len = 11 + lval.chars().count();
     let pad = COL.saturating_sub(left_len);
     Line::from(vec![
         Span::styled(format!("{:<11}", llabel), Style::default().fg(GRAY)),
-        Span::styled(lval.to_string(), Style::default().fg(WHITE)),
+        Span::styled(lval, Style::default().fg(WHITE)),
         Span::raw(" ".repeat(pad)),
         Span::styled(format!("{:<9}", rlabel), Style::default().fg(GRAY)),
         Span::styled(rval.to_string(), Style::default().fg(WHITE)),

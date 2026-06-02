@@ -170,7 +170,7 @@ impl Collector {
             .sys
             .cpus()
             .first()
-            .map(|cpu| cpu.brand().trim().to_string())
+            .map(|cpu| clean_brand(cpu.brand()))
             .filter(|s| !s.is_empty())
             .or_else(System::name)
             .unwrap_or_else(|| "Unknown".into());
@@ -356,6 +356,23 @@ fn read_cpu_freq_mhz() -> Option<u64> {
 fn read_cpu_max_freq_mhz() -> Option<u64> {
     let raw = read_first_line("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq")?;
     raw.parse::<u64>().ok().map(|khz| khz / 1000)
+}
+
+/// Tidy a CPU brand for display: drop `(R)`/`(TM)` marks, the redundant "CPU"
+/// filler, and the trailing "@ x.yGHz" clock, then collapse whitespace. Turns
+/// e.g. "Intel(R) Xeon(R) CPU E5-2620 v3 @ 2.40GHz" into "Intel Xeon E5-2620 v3".
+fn clean_brand(brand: &str) -> String {
+    let mut s = brand.to_string();
+    for mark in ["(R)", "(r)", "(TM)", "(tm)"] {
+        s = s.replace(mark, "");
+    }
+    if let Some(at) = s.find('@') {
+        s.truncate(at);
+    }
+    s.split_whitespace()
+        .filter(|w| *w != "CPU")
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Disk usage % for the `/` mount, falling back to the largest disk.
@@ -734,6 +751,21 @@ eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000";
         m.cpu_load = 95.0; // > 90
         m.disk_pct = 95.0; // > 90
         assert_eq!(count_alerts(&m), 3);
+    }
+
+    #[test]
+    fn clean_brand_strips_marks_filler_and_clock() {
+        assert_eq!(
+            clean_brand("Intel(R) Xeon(R) CPU E5-2620 v3 @ 2.40GHz"),
+            "Intel Xeon E5-2620 v3"
+        );
+        assert_eq!(
+            clean_brand("Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz"),
+            "Intel Core i7-9750H"
+        );
+        // ARM brands carry none of that cruft and pass through unchanged.
+        assert_eq!(clean_brand("Cortex-A76"), "Cortex-A76");
+        assert_eq!(clean_brand("  AMD Ryzen 9 5900X  "), "AMD Ryzen 9 5900X");
     }
 
     #[test]
