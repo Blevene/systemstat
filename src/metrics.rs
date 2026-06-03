@@ -24,6 +24,8 @@ const HISTORY_LEN: usize = 120;
 const GPU_PROBE_TICKS: u64 = 5;
 /// Re-resolve the default-route interface every N ticks (forks on macOS).
 const ROUTE_PROBE_TICKS: u64 = 15;
+/// Re-read battery / AC state every N ticks (slow-changing; scans /sys).
+const POWER_PROBE_TICKS: u64 = 10;
 /// How many processes to keep for the process view / JSON output.
 pub const PROC_LIMIT: usize = 15;
 
@@ -79,7 +81,6 @@ pub struct HealthFlags {
     pub mem_pressure: bool,
 }
 
-/// A single snapshot of everything the dashboard shows.
 /// A process and its usage of a single resource (CPU or RAM), as a percentage.
 /// A named struct (rather than a tuple) so `--json` emits stable
 /// `{"name": ..., "pct": ...}` objects instead of positional arrays.
@@ -89,6 +90,7 @@ pub struct ProcUsage {
     pub pct: f64,
 }
 
+/// A single snapshot of everything the dashboard shows.
 #[derive(Clone, Serialize)]
 pub struct Metrics {
     // identity / system
@@ -390,13 +392,17 @@ impl Collector {
             })
             .collect();
 
-        // ---- battery / power source (systemstat; None on desktops/Pis) ----
-        m.battery = self
-            .stat
-            .battery_life()
-            .ok()
-            .map(|b| (b.remaining_capacity as f64 * 100.0).clamp(0.0, 100.0));
-        m.on_ac = self.stat.on_ac_power().unwrap_or(true);
+        // ---- battery / power source (systemstat; None on desktops/Pis).
+        // Slow-changing and scans /sys (battery_life also calls on_ac_power
+        // internally), so re-probe only every N ticks. ----
+        if tick.is_multiple_of(POWER_PROBE_TICKS) {
+            m.battery = self
+                .stat
+                .battery_life()
+                .ok()
+                .map(|b| (b.remaining_capacity as f64 * 100.0).clamp(0.0, 100.0));
+            m.on_ac = self.stat.on_ac_power().unwrap_or(true);
+        }
 
         // ---- derived cross-platform health flags ----
         m.health = derive_health_flags(

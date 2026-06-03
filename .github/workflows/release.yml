@@ -68,6 +68,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      # macos-latest runners are Apple Silicon, so x86_64-apple-darwin is
+      # cross-compiled here and not executed/tested in CI.
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
       - name: Package tarball
