@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use crate::metrics::{Collector, Metrics};
+use crate::metrics::{History, Metrics};
 
 const CYAN: Color = Color::Cyan;
 const YELLOW: Color = Color::Yellow;
@@ -26,7 +26,7 @@ const MIN_H: u16 = 8;
 
 /// Render the dashboard scrolled by `scroll` rows. Returns the maximum useful
 /// scroll offset (content rows beyond the viewport) so the caller can clamp.
-pub fn render(f: &mut Frame, c: &Collector, scroll: u16) -> u16 {
+pub fn render(f: &mut Frame, m: &Metrics, h: &History, scroll: u16) -> u16 {
     let area = f.size();
     if area.width < MIN_W || area.height < MIN_H {
         let msg = format!(
@@ -48,7 +48,7 @@ pub fn render(f: &mut Frame, c: &Collector, scroll: u16) -> u16 {
     f.render_widget(block, area);
 
     let width = inner.width as usize;
-    let lines = build(&c.metrics, &c.history, width);
+    let lines = build(m, h, width);
     let max_scroll = (lines.len() as u16).saturating_sub(inner.height);
     let scroll = scroll.min(max_scroll);
     f.render_widget(Paragraph::new(lines).scroll((scroll, 0)), inner);
@@ -56,8 +56,8 @@ pub fn render(f: &mut Frame, c: &Collector, scroll: u16) -> u16 {
 }
 
 /// Plain-text (uncolored) snapshot of the dashboard, for `--once`.
-pub fn snapshot(c: &Collector, width: usize) -> String {
-    build(&c.metrics, &c.history, width)
+pub fn snapshot(m: &Metrics, h: &History, width: usize) -> String {
+    build(m, h, width)
         .iter()
         .map(|line| {
             line.spans
@@ -464,5 +464,106 @@ fn fmt_uptime(s: u64) -> String {
         format!("{}d {}h {}m {}s", d, h, m, sec)
     } else {
         format!("{}h {}m {}s", h, m, sec)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::metrics::HealthFlags;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    /// Flatten a rendered TestBackend buffer into newline-joined plain text.
+    fn buffer_text(t: &Terminal<TestBackend>) -> String {
+        let buf = t.backend().buffer();
+        let area = *buf.area();
+        (0..area.height)
+            .map(|y| {
+                (0..area.width)
+                    .map(|x| buf.get(x, y).symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn render_to(m: &Metrics, h: &History, w: u16, ht: u16) -> String {
+        let mut term = Terminal::new(TestBackend::new(w, ht)).unwrap();
+        term.draw(|f| {
+            render(f, m, h, 0);
+        })
+        .unwrap();
+        buffer_text(&term)
+    }
+
+    #[test]
+    fn renders_all_section_headers() {
+        let text = render_to(&Metrics::default(), &History::default(), 100, 50);
+        for header in [
+            "SystemStat",
+            "CPU / THERMAL",
+            "MEMORY / STORAGE",
+            "NETWORK",
+            "POWER / HEALTH",
+            "INSIGHTS",
+            "Status",
+            "Advisories",
+        ] {
+            assert!(
+                text.contains(header),
+                "missing `{header}` in render:\n{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn battery_row_only_when_present() {
+        let h = History::default();
+        // No battery -> no Battery row.
+        let none = Metrics {
+            battery: None,
+            ..Default::default()
+        };
+        assert!(!render_to(&none, &h, 100, 50).contains("Battery"));
+
+        // Battery present -> a Battery row with the charge %.
+        let some = Metrics {
+            battery: Some(73.0),
+            on_ac: false,
+            ..Default::default()
+        };
+        let text = render_to(&some, &h, 100, 50);
+        assert!(text.contains("Battery"));
+        assert!(text.contains("73%"));
+        assert!(text.contains("on battery"));
+    }
+
+    #[test]
+    fn small_terminal_shows_notice() {
+        let text = render_to(&Metrics::default(), &History::default(), 20, 5);
+        assert!(text.contains("too small"), "expected notice, got:\n{text}");
+    }
+
+    #[test]
+    fn advisories_render_as_bullets() {
+        let m = Metrics {
+            advisories: vec!["Disk nearly full (95%) — free space".into()],
+            health: HealthFlags::default(),
+            ..Default::default()
+        };
+        let text = render_to(&m, &History::default(), 100, 50);
+        assert!(text.contains("Disk nearly full"));
+        assert!(text.contains('•'));
+    }
+
+    #[test]
+    fn snapshot_is_plain_text_with_sections() {
+        let snap = snapshot(&Metrics::default(), &History::default(), 80);
+        assert!(snap.contains("SystemStat"));
+        assert!(!snap.contains("DOCTOR")); // renamed to INSIGHTS
+        assert!(snap.contains("INSIGHTS"));
+        // plain text: no ANSI escapes
+        assert!(!snap.contains('\u{1b}'));
     }
 }

@@ -56,7 +56,8 @@ fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>) -> io::Result<()> {
             return Ok(());
         }
 
-        terminal.draw(|f| max_scroll = ui::render(f, &collector, scroll))?;
+        terminal
+            .draw(|f| max_scroll = ui::render(f, &collector.metrics, &collector.history, scroll))?;
         scroll = scroll.min(max_scroll);
 
         // Block at most POLL so the UI stays responsive between refreshes.
@@ -157,7 +158,7 @@ fn snapshot(json: bool) -> io::Result<()> {
         let width = crossterm::terminal::size()
             .map(|(w, _)| w as usize)
             .unwrap_or(100);
-        println!("{}", ui::snapshot(&c, width));
+        println!("{}", ui::snapshot(&c.metrics, &c.history, width));
     }
     Ok(())
 }
