@@ -3,16 +3,22 @@
 # Install:
 #   sudo cp target/release/systemstat /usr/local/bin/
 #   sudo cp docs/systemstat.service /etc/systemd/system/
-#   sudo systemctl disable getty@tty1        # free the console
 #   sudo systemctl enable --now systemstat
+#
+# `Conflicts=getty@tty1.service` already frees tty1 at runtime, so an explicit
+# `systemctl disable getty@tty1` is not required (and may not stick on systems
+# where the getty is auto-spawned by systemd-getty-generator).
 #
 # Stop cleanly with `sudo systemctl stop systemstat` — the SIGTERM handler
 # restores the console.
 
 [Unit]
 Description=SystemStat dashboard (kiosk)
-After=multi-user.target
+After=systemd-user-sessions.service
 Conflicts=getty@tty1.service
+# Stop thrashing if the binary is missing or crashes on every start.
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -26,6 +32,16 @@ StandardOutput=tty
 TTYPath=/dev/tty1
 TTYReset=yes
 TTYVHangup=yes
+
+# Sandboxing for a read-only dashboard. It only reads /proc and /sys (left
+# readable) and never writes outside /tmp. This unit runs as root (no User=),
+# so ProtectHome=read-only still permits reading the optional config at
+# /root/.config/systemstat/config.toml — add User=/Environment=HOME= if you
+# want it loaded from a specific user's home instead.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
 
 [Install]
 WantedBy=multi-user.target
