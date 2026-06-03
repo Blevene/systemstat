@@ -21,7 +21,9 @@ class Systemstat < Formula
   end
 
   def install
-    bin.install "systemstat"
+    # The release tarball nests the binary under a top-level
+    # systemstat-<version>-<target>/ directory, so don't assume it's at the root.
+    bin.install Dir["*/systemstat"].first
   end
 
   test do

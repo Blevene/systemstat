@@ -15,6 +15,10 @@ name = "systemstat"
 path = "src/main.rs"
 
 [package.metadata.deb]
+# Name the binary package `systemstat` (not the crate name `systemstat-tui`) so
+# the auto-generated copyright/changelog land in usr/share/doc/systemstat/,
+# matching the doc assets below.
+name = "systemstat"
 maintainer = "Blevene <blevene@users.noreply.github.com>"
 copyright = "2026, Blevene"
 section = "utils"
@@ -29,7 +33,7 @@ assets = [
     ["config.example.toml", "usr/share/doc/systemstat/", "644"],
     ["docs/systemstat.service", "usr/share/doc/systemstat/", "644"],
     ["README.md", "usr/share/doc/systemstat/README.md", "644"],
-    ["LICENSE", "usr/share/doc/systemstat/", "644"],
+    # LICENSE is covered by cargo-deb's auto-generated copyright file.
 ]
 
 [dependencies]
