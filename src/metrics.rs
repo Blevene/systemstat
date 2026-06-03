@@ -19,6 +19,17 @@ use systemstat::{Platform, System as StatSystem};
 use crate::config::Thresholds;
 
 const HISTORY_LEN: usize = 120;
+/// How many processes to keep for the process view / JSON output.
+pub const PROC_LIMIT: usize = 15;
+
+/// A single process for the process view (and JSON output).
+#[derive(Clone, Serialize)]
+pub struct Proc {
+    pub name: String,
+    pub pid: u32,
+    pub cpu: f64,
+    pub mem_pct: f64,
+}
 
 /// Cross-platform health flags surfaced under POWER / HEALTH. All are derived
 /// from generally-available data (temperature, cpufreq, load, memory) so they
@@ -94,6 +105,8 @@ pub struct Metrics {
     pub storage_note: String,
     pub top_cpu: ProcUsage,
     pub top_ram: ProcUsage,
+    /// Top processes (by CPU or memory), for the process view.
+    pub procs: Vec<Proc>,
 }
 
 impl Default for Metrics {
@@ -142,6 +155,7 @@ impl Default for Metrics {
                 name: "—".into(),
                 pct: 0.0,
             },
+            procs: Vec::new(),
         }
     }
 }
@@ -312,33 +326,54 @@ impl Collector {
             &t,
         );
 
-        // ---- top processes ----
-        let mut top_cpu = ProcUsage {
-            name: "—".to_string(),
-            pct: 0.0,
-        };
-        let mut top_ram = ProcUsage {
-            name: "—".to_string(),
-            pct: 0.0,
-        };
-        for proc in self.sys.processes().values() {
-            let cpu = proc.cpu_usage() as f64;
-            if cpu > top_cpu.pct {
-                top_cpu = ProcUsage {
-                    name: proc.name().to_string(),
-                    pct: cpu,
-                };
-            }
-            let ram = pct(proc.memory(), total);
-            if ram > top_ram.pct {
-                top_ram = ProcUsage {
-                    name: proc.name().to_string(),
-                    pct: ram,
-                };
-            }
-        }
-        m.top_cpu = top_cpu;
-        m.top_ram = top_ram;
+        // ---- processes ----
+        let mut procs: Vec<Proc> = self
+            .sys
+            .processes()
+            .iter()
+            .map(|(pid, p)| Proc {
+                name: p.name().to_string(),
+                pid: pid.as_u32(),
+                cpu: p.cpu_usage() as f64,
+                mem_pct: pct(p.memory(), total),
+            })
+            .collect();
+        // Single top-CPU / top-RAM for INSIGHTS (computed over all processes).
+        m.top_cpu = procs
+            .iter()
+            .max_by(|a, b| a.cpu.total_cmp(&b.cpu))
+            .map(|p| ProcUsage {
+                name: p.name.clone(),
+                pct: p.cpu,
+            })
+            .unwrap_or(ProcUsage {
+                name: "—".into(),
+                pct: 0.0,
+            });
+        m.top_ram = procs
+            .iter()
+            .max_by(|a, b| a.mem_pct.total_cmp(&b.mem_pct))
+            .map(|p| ProcUsage {
+                name: p.name.clone(),
+                pct: p.mem_pct,
+            })
+            .unwrap_or(ProcUsage {
+                name: "—".into(),
+                pct: 0.0,
+            });
+        // Keep the union of the top PROC_LIMIT by CPU and by memory, so the
+        // process view shows a correct top-N under either sort key. Truncating
+        // by a single combined metric could drop a genuinely high-CPU,
+        // low-memory process (or vice versa).
+        let mut keep: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        procs.sort_by(|a, b| b.cpu.total_cmp(&a.cpu));
+        keep.extend(procs.iter().take(PROC_LIMIT).map(|p| p.pid));
+        procs.sort_by(|a, b| b.mem_pct.total_cmp(&a.mem_pct));
+        keep.extend(procs.iter().take(PROC_LIMIT).map(|p| p.pid));
+        procs.retain(|p| keep.contains(&p.pid));
+        // Default order: most notable by either metric (the UI re-sorts on demand).
+        procs.sort_by(|a, b| b.cpu.max(b.mem_pct).total_cmp(&a.cpu.max(a.mem_pct)));
+        m.procs = procs;
 
         // ---- derived heuristics (thresholds come from config) ----
         let (health, why) = derive_system_health(m, &t);

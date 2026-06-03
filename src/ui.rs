@@ -24,9 +24,23 @@ const LBL: usize = 13;
 const MIN_W: u16 = 30;
 const MIN_H: u16 = 8;
 
-/// Render the dashboard scrolled by `scroll` rows. Returns the maximum useful
+/// Process-view sort key.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Sort {
+    Cpu,
+    Mem,
+}
+
+/// Which screen the dashboard is showing.
+#[derive(Clone, Copy)]
+pub enum View {
+    Dashboard,
+    Processes(Sort),
+}
+
+/// Render the current view scrolled by `scroll` rows. Returns the maximum useful
 /// scroll offset (content rows beyond the viewport) so the caller can clamp.
-pub fn render(f: &mut Frame, m: &Metrics, h: &History, scroll: u16) -> u16 {
+pub fn render(f: &mut Frame, m: &Metrics, h: &History, scroll: u16, view: View) -> u16 {
     let area = f.size();
     if area.width < MIN_W || area.height < MIN_H {
         let msg = format!(
@@ -48,11 +62,62 @@ pub fn render(f: &mut Frame, m: &Metrics, h: &History, scroll: u16) -> u16 {
     f.render_widget(block, area);
 
     let width = inner.width as usize;
-    let lines = build(m, h, width);
+    let lines = match view {
+        View::Dashboard => build(m, h, width),
+        View::Processes(sort) => build_processes(m, width, sort),
+    };
     let max_scroll = (lines.len() as u16).saturating_sub(inner.height);
     let scroll = scroll.min(max_scroll);
     f.render_widget(Paragraph::new(lines).scroll((scroll, 0)), inner);
     max_scroll
+}
+
+/// The process-list view: a sortable table of the top processes.
+fn build_processes(m: &Metrics, width: usize, sort: Sort) -> Vec<Line<'static>> {
+    let mut out: Vec<Line> = Vec::new();
+    let (by, other) = match sort {
+        Sort::Cpu => ("CPU", "memory"),
+        Sort::Mem => ("memory", "CPU"),
+    };
+    out.push(two_sided(
+        "SystemStat — Processes",
+        &format!("sorted by {by}"),
+        width,
+        Style::default().fg(CYAN).add_modifier(Modifier::BOLD),
+        Style::default().fg(GRAY),
+    ));
+    out.push(sep(width));
+    out.push(header(&format!(
+        "PROCESSES   (Tab: dashboard    s: sort by {other})"
+    )));
+    out.push(Line::from(Span::styled(
+        format!("{:>7}  {:<28}{:>8}{:>8}", "PID", "NAME", "CPU%", "MEM%"),
+        Style::default().fg(GRAY),
+    )));
+
+    let mut procs = m.procs.clone();
+    match sort {
+        Sort::Cpu => procs.sort_by(|a, b| b.cpu.total_cmp(&a.cpu)),
+        Sort::Mem => procs.sort_by(|a, b| b.mem_pct.total_cmp(&a.mem_pct)),
+    }
+    // m.procs holds the union of the top-by-CPU and top-by-MEM sets; show the
+    // top PROC_LIMIT for the active key so each sort gives a correct top-N.
+    for p in procs.iter().take(crate::metrics::PROC_LIMIT) {
+        let name = truncate_fit(&p.name, 28);
+        out.push(Line::from(vec![
+            Span::styled(format!("{:>7}  ", p.pid), Style::default().fg(GRAY)),
+            Span::styled(format!("{name:<28}"), Style::default().fg(WHITE)),
+            Span::styled(format!("{:>8.1}", p.cpu), Style::default().fg(YELLOW)),
+            Span::styled(format!("{:>8.1}", p.mem_pct), Style::default().fg(CYAN)),
+        ]));
+    }
+    if procs.is_empty() {
+        out.push(Line::from(Span::styled(
+            "(no process data)",
+            Style::default().fg(GRAY),
+        )));
+    }
+    out
 }
 
 /// Plain-text (uncolored) snapshot of the dashboard, for `--once`.
@@ -488,9 +553,13 @@ mod tests {
     }
 
     fn render_to(m: &Metrics, h: &History, w: u16, ht: u16) -> String {
+        render_view(m, h, w, ht, View::Dashboard)
+    }
+
+    fn render_view(m: &Metrics, h: &History, w: u16, ht: u16, view: View) -> String {
         let mut term = Terminal::new(TestBackend::new(w, ht)).unwrap();
         term.draw(|f| {
-            render(f, m, h, 0);
+            render(f, m, h, 0, view);
         })
         .unwrap();
         buffer_text(&term)
@@ -533,6 +602,41 @@ mod tests {
         assert!(text.contains("Battery"));
         assert!(text.contains("73%"));
         assert!(text.contains("on battery"));
+    }
+
+    #[test]
+    fn process_view_lists_procs_sorted() {
+        use crate::metrics::Proc;
+        let m = Metrics {
+            procs: vec![
+                Proc {
+                    name: "low_cpu_hi_mem".into(),
+                    pid: 1,
+                    cpu: 1.0,
+                    mem_pct: 40.0,
+                },
+                Proc {
+                    name: "hi_cpu_low_mem".into(),
+                    pid: 2,
+                    cpu: 90.0,
+                    mem_pct: 1.0,
+                },
+            ],
+            ..Default::default()
+        };
+        let h = History::default();
+
+        let by_cpu = render_view(&m, &h, 80, 30, View::Processes(Sort::Cpu));
+        assert!(by_cpu.contains("PROCESSES"));
+        assert!(by_cpu.contains("hi_cpu_low_mem"));
+        // CPU sort puts the high-cpu process before the high-mem one.
+        let p_hi_cpu = by_cpu.find("hi_cpu_low_mem").unwrap();
+        let p_hi_mem = by_cpu.find("low_cpu_hi_mem").unwrap();
+        assert!(p_hi_cpu < p_hi_mem, "cpu sort order wrong");
+
+        // Mem sort flips the order.
+        let by_mem = render_view(&m, &h, 80, 30, View::Processes(Sort::Mem));
+        assert!(by_mem.find("low_cpu_hi_mem").unwrap() < by_mem.find("hi_cpu_low_mem").unwrap());
     }
 
     #[test]

@@ -51,6 +51,7 @@ fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>, config: &Config) -> io::
     collector.refresh();
     let mut scroll: u16 = 0;
     let mut max_scroll: u16 = 0;
+    let mut view = ui::View::Dashboard;
 
     loop {
         // A SIGTERM/SIGINT/SIGHUP sets this; exit so main() can restore the terminal.
@@ -58,8 +59,9 @@ fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>, config: &Config) -> io::
             return Ok(());
         }
 
-        terminal
-            .draw(|f| max_scroll = ui::render(f, &collector.metrics, &collector.history, scroll))?;
+        terminal.draw(|f| {
+            max_scroll = ui::render(f, &collector.metrics, &collector.history, scroll, view)
+        })?;
         scroll = scroll.min(max_scroll);
 
         // Block at most POLL so the UI stays responsive between refreshes.
@@ -73,6 +75,24 @@ fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>, config: &Config) -> io::
                             return Ok(());
                         }
                         match key.code {
+                            // Tab toggles dashboard <-> processes; reset scroll.
+                            KeyCode::Tab => {
+                                view = match view {
+                                    ui::View::Dashboard => ui::View::Processes(ui::Sort::Cpu),
+                                    ui::View::Processes(_) => ui::View::Dashboard,
+                                };
+                                scroll = 0;
+                            }
+                            // 's' flips the process-view sort key.
+                            KeyCode::Char('s') => {
+                                if let ui::View::Processes(sort) = view {
+                                    let next = match sort {
+                                        ui::Sort::Cpu => ui::Sort::Mem,
+                                        ui::Sort::Mem => ui::Sort::Cpu,
+                                    };
+                                    view = ui::View::Processes(next);
+                                }
+                            }
                             KeyCode::Up | KeyCode::Char('k') => scroll = scroll.saturating_sub(1),
                             KeyCode::Down | KeyCode::Char('j') => {
                                 scroll = scroll.saturating_add(1).min(max_scroll)
@@ -116,7 +136,15 @@ OPTIONS:
     -h, --help           Show this help and exit
     -V, --version        Show version and exit
 
-With no options, runs the interactive dashboard (quit with q/Esc/Ctrl-C).";
+With no options, runs the interactive dashboard.
+
+KEYS (interactive):
+    q, Esc, Ctrl-C       Quit
+    Tab                  Toggle dashboard / process list
+    s                    (process list) sort by CPU / memory
+    Up/Down, j/k         Scroll
+    PageUp/PageDown      Scroll a page
+    Home/End             Top / bottom";
 
 enum Mode {
     Interactive,
