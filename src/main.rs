@@ -152,7 +152,10 @@ fn snapshot(json: bool) -> io::Result<()> {
     std::thread::sleep(REFRESH);
     c.refresh();
     if json {
-        let out = serde_json::to_string_pretty(&c.metrics).expect("metrics serialize");
+        // Propagate rather than panic: a NaN/Infinity float would make
+        // serde_json fail, and --json is meant for scripts.
+        let out = serde_json::to_string_pretty(&c.metrics)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         println!("{out}");
     } else {
         let width = crossterm::terminal::size()
