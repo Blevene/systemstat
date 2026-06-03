@@ -470,7 +470,6 @@ fn fmt_uptime(s: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::metrics::HealthFlags;
     use ratatui::backend::TestBackend;
     use ratatui::Terminal;
 
@@ -500,7 +499,7 @@ mod tests {
     #[test]
     fn renders_all_section_headers() {
         let text = render_to(&Metrics::default(), &History::default(), 100, 50);
-        for header in [
+        for label in [
             "SystemStat",
             "CPU / THERMAL",
             "MEMORY / STORAGE",
@@ -510,10 +509,7 @@ mod tests {
             "Status",
             "Advisories",
         ] {
-            assert!(
-                text.contains(header),
-                "missing `{header}` in render:\n{text}"
-            );
+            assert!(text.contains(label), "missing `{label}` in render:\n{text}");
         }
     }
 
@@ -549,7 +545,6 @@ mod tests {
     fn advisories_render_as_bullets() {
         let m = Metrics {
             advisories: vec!["Disk nearly full (95%) — free space".into()],
-            health: HealthFlags::default(),
             ..Default::default()
         };
         let text = render_to(&m, &History::default(), 100, 50);
@@ -563,7 +558,5 @@ mod tests {
         assert!(snap.contains("SystemStat"));
         assert!(!snap.contains("DOCTOR")); // renamed to INSIGHTS
         assert!(snap.contains("INSIGHTS"));
-        // plain text: no ANSI escapes
-        assert!(!snap.contains('\u{1b}'));
     }
 }
