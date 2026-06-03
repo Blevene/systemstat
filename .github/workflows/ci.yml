@@ -11,8 +11,12 @@ env:
 
 jobs:
   check:
-    name: fmt · clippy · test · build
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }} · fmt · clippy · test · build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v5
 

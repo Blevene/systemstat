@@ -741,15 +741,32 @@ fn primary_iface(networks: &Networks) -> Option<(String, u64, u64)> {
     Some((name, rx, tx))
 }
 
-/// The interface backing the IPv4 default route (Linux `/proc/net/route`).
-/// `None` off Linux or when there is no default route.
+/// The interface backing the default route: Linux `/proc/net/route`, macOS
+/// `route -n get default`. `None` elsewhere or when there is no default route
+/// (the caller then falls back to the busiest interface).
 fn default_route_iface() -> Option<String> {
-    let content = fs::read_to_string("/proc/net/route").ok()?;
-    parse_default_route(&content)
+    #[cfg(target_os = "linux")]
+    {
+        let content = fs::read_to_string("/proc/net/route").ok()?;
+        parse_default_route(&content)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let out = Command::new("route")
+            .args(["-n", "get", "default"])
+            .output()
+            .ok()?;
+        parse_macos_route(&String::from_utf8_lossy(&out.stdout))
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        None
+    }
 }
 
 /// Find the iface whose route Destination is `00000000` (0.0.0.0, the default
 /// route). Columns are: Iface  Destination  Gateway  Flags ...
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn parse_default_route(content: &str) -> Option<String> {
     for line in content.lines().skip(1) {
         let mut f = line.split_whitespace();
@@ -760,6 +777,16 @@ fn parse_default_route(content: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Parse `route -n get default` (macOS): the line `  interface: en0`.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn parse_macos_route(output: &str) -> Option<String> {
+    output
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("interface:"))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 // ---- pure derivations (unit-tested; tune dashboard thresholds here) ----
@@ -985,6 +1012,14 @@ wlan0\t00000000\t0102A8C0\t0003\t0\t0\t600\t00000000
 eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000";
         // First row has a non-default destination; wlan0 is the real default route.
         assert_eq!(parse_default_route(sample), Some("wlan0".to_string()));
+    }
+
+    #[test]
+    fn macos_route_parses_interface_line() {
+        let sample = "   route to: default\ndestination: default\n       mask: default\n    gateway: 192.168.1.1\n  interface: en0\n      flags: <UP,GATEWAY,DONE,STATIC,PRCLONING>\n";
+        assert_eq!(parse_macos_route(sample), Some("en0".to_string()));
+        assert_eq!(parse_macos_route(""), None);
+        assert_eq!(parse_macos_route("gateway: 1.2.3.4\n"), None);
     }
 
     #[test]

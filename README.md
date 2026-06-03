@@ -6,10 +6,12 @@ A single-binary terminal system-monitor dashboard: CPU and thermal, memory and
 storage, network throughput, a derived power/health panel, and an "insights"
 summary (overall status, advisories, top processes) — all refreshed once a second.
 
-Cross-platform metrics come from `sysinfo`; richer Linux signals (thermal zone,
-cpufreq current/max, `/proc/diskstats`, default route) are read directly when
-present, and the POWER/HEALTH flags are derived generically per platform and
-degrade gracefully when a signal is unavailable.
+Cross-platform metrics come from `sysinfo` (plus battery / portable CPU
+temperature from `systemstat`); richer Linux signals (thermal zone, cpufreq
+current/max, `/proc/diskstats`) are read directly when present. On macOS the
+default route comes from `route`, and the POWER/HEALTH flags are derived
+generically per platform — anything unavailable degrades gracefully. CI builds
+and tests on both Linux and macOS.
 
 ## What it looks like
 
