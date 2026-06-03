@@ -13,6 +13,7 @@ use std::fs;
 use std::time::Instant;
 
 use sysinfo::{Components, Disks, Networks, System};
+use systemstat::{Platform, System as StatSystem};
 
 const HISTORY_LEN: usize = 120;
 
@@ -61,6 +62,10 @@ pub struct Metrics {
     pub net_recv_kib: f64,
     // power / health
     pub health: HealthFlags,
+    /// Battery charge %, or `None` when the host has no battery (desktops, Pis).
+    pub battery: Option<f64>,
+    /// On AC power (true when unknown / no battery).
+    pub on_ac: bool,
     pub system_health: f64,
     pub storage_health: f64,
     pub stability_avg: f64,
@@ -102,6 +107,8 @@ impl Default for Metrics {
             net_sent_kib: 0.0,
             net_recv_kib: 0.0,
             health: HealthFlags::default(),
+            battery: None,
+            on_ac: true,
             system_health: 100.0,
             storage_health: 100.0,
             stability_avg: 100.0,
@@ -139,6 +146,8 @@ fn push_capped(buf: &mut VecDeque<f64>, v: f64) {
 /// Owns the live `sysinfo` state and the derived snapshot/history.
 pub struct Collector {
     sys: System,
+    /// Supplementary cross-platform backend (battery, AC power, portable temp).
+    stat: StatSystem,
     networks: Networks,
     disks: Disks,
     components: Components,
@@ -159,6 +168,7 @@ impl Collector {
         let components = Components::new_with_refreshed_list();
         let mut c = Collector {
             sys,
+            stat: StatSystem::new(),
             networks,
             disks,
             components,
@@ -208,6 +218,7 @@ impl Collector {
         m.cpu_max_freq_mhz = read_cpu_max_freq_mhz().unwrap_or(0).max(self.peak_freq_mhz);
         m.cpu_temp = read_thermal_zone()
             .or_else(|| component_cpu_temp(&self.components))
+            .or_else(|| self.stat.cpu_temp().ok().map(|t| t as f64))
             .unwrap_or(0.0);
 
         // ---- load / uptime ----
@@ -254,6 +265,14 @@ impl Collector {
             m.net_recv_kib = 0.0;
             m.net_sent_kib = 0.0;
         }
+
+        // ---- battery / power source (systemstat; None on desktops/Pis) ----
+        m.battery = self
+            .stat
+            .battery_life()
+            .ok()
+            .map(|b| (b.remaining_capacity as f64 * 100.0).clamp(0.0, 100.0));
+        m.on_ac = self.stat.on_ac_power().unwrap_or(true);
 
         // ---- derived cross-platform health flags ----
         m.health = derive_health_flags(

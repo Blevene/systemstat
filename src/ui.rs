@@ -151,6 +151,9 @@ fn build(m: &Metrics, h: &crate::metrics::History, width: usize) -> Vec<Line<'st
         true,
         format!("{:.0}% RAM", m.ram_pct),
     ));
+    if let Some(batt) = m.battery {
+        out.push(battery_row(batt, m.on_ac));
+    }
     out.push(spark_row("Health Trend", &h.health, width));
     out.push(spark_row("Temp Trend", &h.temp, width));
     out.push(bar_row(
@@ -344,6 +347,27 @@ fn doc_row(llabel: &str, lval: &str, rlabel: &str, rval: &str) -> Line<'static> 
         Span::raw(" ".repeat(pad)),
         Span::styled(format!("{:<9}", rlabel), Style::default().fg(GRAY)),
         Span::styled(rval.to_string(), Style::default().fg(WHITE)),
+    ])
+}
+
+/// Battery charge + power source. Color reflects charge level; only shown when
+/// the host actually has a battery.
+fn battery_row(pct: f64, on_ac: bool) -> Line<'static> {
+    let col = if pct < 20.0 {
+        RED
+    } else if pct < 50.0 {
+        YELLOW
+    } else {
+        GREEN
+    };
+    let source = if on_ac { "AC" } else { "battery" };
+    Line::from(vec![
+        lbl("Battery"),
+        Span::styled(
+            format!("{:>5} ", format!("{pct:.0}%")),
+            Style::default().fg(col).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(format!("on {source}"), Style::default().fg(GRAY)),
     ])
 }
 
