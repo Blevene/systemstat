@@ -63,8 +63,10 @@ pub struct Metrics {
     // power / health
     pub health: HealthFlags,
     /// Battery charge %, or `None` when the host has no battery (desktops, Pis).
+    /// Currently Linux-only: systemstat's macOS/Windows backends return `Err`
+    /// for `battery_life`, so this stays `None` there until a native source is added.
     pub battery: Option<f64>,
-    /// On AC power (true when unknown / no battery).
+    /// On AC power (true when unknown / no battery, e.g. all non-Linux hosts).
     pub on_ac: bool,
     pub system_health: f64,
     pub storage_health: f64,
