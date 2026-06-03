@@ -50,3 +50,20 @@ jobs:
         with:
           files: systemstat-*.tar.gz
           fail_on_unmatched_files: true
+
+  deb:
+    name: debian package (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-deb
+        run: cargo install cargo-deb --locked
+      - name: Build .deb
+        run: cargo deb
+      - name: Attach .deb to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/debian/*.deb
+          fail_on_unmatched_files: true

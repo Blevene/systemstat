@@ -3,12 +3,34 @@ name = "systemstat-tui"
 version = "0.0.1"
 edition = "2021"
 description = "SystemStat — a terminal system-monitor dashboard (Raspberry Pi friendly)"
+# NOTE: defaulted to MIT — change if you prefer another license.
+license = "MIT"
+repository = "https://github.com/Blevene/systemstat"
+readme = "README.md"
 
 # The package is `systemstat-tui` (the crates.io name `systemstat` is taken), but
 # the installed command stays `systemstat`.
 [[bin]]
 name = "systemstat"
 path = "src/main.rs"
+
+[package.metadata.deb]
+maintainer = "Blevene <blevene@users.noreply.github.com>"
+copyright = "2026, Blevene"
+section = "utils"
+priority = "optional"
+extended-description = """\
+A single-binary terminal system-monitor dashboard: CPU/thermal, memory/storage, \
+network, power/health, GPU (when present), a process view, and a derived \
+insights summary. Cross-platform via sysinfo, with richer Linux signals read \
+directly when available."""
+assets = [
+    ["target/release/systemstat", "usr/bin/", "755"],
+    ["config.example.toml", "usr/share/doc/systemstat/", "644"],
+    ["docs/systemstat.service", "usr/share/doc/systemstat/", "644"],
+    ["README.md", "usr/share/doc/systemstat/README.md", "644"],
+    ["LICENSE", "usr/share/doc/systemstat/", "644"],
+]
 
 [dependencies]
 ratatui = "0.26"

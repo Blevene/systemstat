@@ -106,6 +106,18 @@ scp target/aarch64-unknown-linux-gnu/release/systemstat pi@raspberrypi.local:~
 For a 32-bit Pi OS use `armv7-unknown-linux-gnueabihf` instead. For a fully static
 binary, target the `musl` variants (e.g. `aarch64-unknown-linux-musl`).
 
+## Packaging
+
+- **Debian/Ubuntu (`.deb`):** `cargo install cargo-deb` then `cargo deb` builds a
+  package that installs the `systemstat` binary plus docs (the example config and
+  systemd unit). Tagged releases also attach a prebuilt `.deb`.
+- **Homebrew:** a formula template lives at `docs/homebrew/systemstat.rb`; it
+  activates once macOS release binaries exist (see issue #2).
+
+## License
+
+MIT — see `LICENSE`. (Defaulted; change if you prefer another license.)
+
 ## Always-on / kiosk mode
 
 `systemstat --kiosk` runs the dashboard but ignores `q`/`Esc`, so a dedicated
