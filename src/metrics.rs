@@ -31,6 +31,23 @@ pub struct Proc {
     pub mem_pct: f64,
 }
 
+/// A mounted filesystem for the detail view.
+#[derive(Clone, Serialize)]
+pub struct MountInfo {
+    pub mount: String,
+    pub fs: String,
+    pub total_gib: f64,
+    pub used_pct: f64,
+}
+
+/// A network interface's cumulative totals for the detail view.
+#[derive(Clone, Serialize)]
+pub struct IfaceInfo {
+    pub name: String,
+    pub rx_mib: f64,
+    pub tx_mib: f64,
+}
+
 /// Cross-platform health flags surfaced under POWER / HEALTH. All are derived
 /// from generally-available data (temperature, cpufreq, load, memory) so they
 /// work on any architecture and degrade to `false` where a signal is missing.
@@ -107,6 +124,10 @@ pub struct Metrics {
     pub top_ram: ProcUsage,
     /// Top processes (by CPU or memory), for the process view.
     pub procs: Vec<Proc>,
+    /// All real mounts, for the detail view.
+    pub mounts: Vec<MountInfo>,
+    /// All non-loopback interfaces (cumulative totals), for the detail view.
+    pub ifaces: Vec<IfaceInfo>,
 }
 
 impl Default for Metrics {
@@ -156,6 +177,8 @@ impl Default for Metrics {
                 pct: 0.0,
             },
             procs: Vec::new(),
+            mounts: Vec::new(),
+            ifaces: Vec::new(),
         }
     }
 }
@@ -276,8 +299,22 @@ impl Collector {
         m.ram_pct = pct(self.sys.used_memory(), total);
         m.swap_pct = pct(self.sys.used_swap(), self.sys.total_swap());
 
-        // ---- disk space (root mount, else largest) ----
+        // ---- disk space (root mount, else largest) + per-mount detail ----
         m.disk_pct = root_disk_usage(&self.disks);
+        m.mounts = self
+            .disks
+            .iter()
+            .filter(|d| d.total_space() > 0)
+            .map(|d| {
+                let total = d.total_space();
+                MountInfo {
+                    mount: d.mount_point().to_string_lossy().into_owned(),
+                    fs: d.file_system().to_string_lossy().into_owned(),
+                    total_gib: total as f64 / 1024.0 / 1024.0 / 1024.0,
+                    used_pct: pct(total.saturating_sub(d.available_space()), total),
+                }
+            })
+            .collect();
 
         // ---- disk I/O (sectors -> KiB/s via /proc/diskstats deltas) ----
         if let Some((r, w)) = read_diskstats() {
@@ -306,6 +343,16 @@ impl Collector {
             m.net_recv_kib = 0.0;
             m.net_sent_kib = 0.0;
         }
+        m.ifaces = self
+            .networks
+            .iter()
+            .filter(|(n, _)| n.as_str() != "lo" && !n.starts_with("lo"))
+            .map(|(n, d)| IfaceInfo {
+                name: n.clone(),
+                rx_mib: d.total_received() as f64 / 1024.0 / 1024.0,
+                tx_mib: d.total_transmitted() as f64 / 1024.0 / 1024.0,
+            })
+            .collect();
 
         // ---- battery / power source (systemstat; None on desktops/Pis) ----
         m.battery = self

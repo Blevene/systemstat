@@ -75,11 +75,12 @@ fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>, config: &Config) -> io::
                             return Ok(());
                         }
                         match key.code {
-                            // Tab toggles dashboard <-> processes; reset scroll.
+                            // Tab cycles dashboard -> processes -> detail; reset scroll.
                             KeyCode::Tab => {
                                 view = match view {
                                     ui::View::Dashboard => ui::View::Processes(ui::Sort::Cpu),
-                                    ui::View::Processes(_) => ui::View::Dashboard,
+                                    ui::View::Processes(_) => ui::View::Detail,
+                                    ui::View::Detail => ui::View::Dashboard,
                                 };
                                 scroll = 0;
                             }

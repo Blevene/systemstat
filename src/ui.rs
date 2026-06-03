@@ -36,6 +36,7 @@ pub enum Sort {
 pub enum View {
     Dashboard,
     Processes(Sort),
+    Detail,
 }
 
 /// Render the current view scrolled by `scroll` rows. Returns the maximum useful
@@ -65,6 +66,7 @@ pub fn render(f: &mut Frame, m: &Metrics, h: &History, scroll: u16, view: View) 
     let lines = match view {
         View::Dashboard => build(m, h, width),
         View::Processes(sort) => build_processes(m, width, sort),
+        View::Detail => build_detail(m, width),
     };
     let max_scroll = (lines.len() as u16).saturating_sub(inner.height);
     let scroll = scroll.min(max_scroll);
@@ -116,6 +118,67 @@ fn build_processes(m: &Metrics, width: usize, sort: Sort) -> Vec<Line<'static>> 
             "(no process data)",
             Style::default().fg(GRAY),
         )));
+    }
+    out
+}
+
+/// The detail view: every mount and every non-loopback interface.
+fn build_detail(m: &Metrics, width: usize) -> Vec<Line<'static>> {
+    let mut out: Vec<Line> = Vec::new();
+    out.push(two_sided(
+        "SystemStat — Storage & Network",
+        "Tab: dashboard",
+        width,
+        Style::default().fg(CYAN).add_modifier(Modifier::BOLD),
+        Style::default().fg(GRAY),
+    ));
+    out.push(sep(width));
+
+    out.push(header("MOUNTS"));
+    out.push(Line::from(Span::styled(
+        format!(
+            "{:<26}{:<10}{:>10}{:>8}",
+            "MOUNT", "FS", "SIZE GiB", "USED%"
+        ),
+        Style::default().fg(GRAY),
+    )));
+    for mt in &m.mounts {
+        let pct_col = if mt.used_pct >= 90.0 { RED } else { WHITE };
+        out.push(Line::from(vec![
+            Span::styled(
+                format!("{:<26}", truncate_fit(&mt.mount, 25)),
+                Style::default().fg(WHITE),
+            ),
+            Span::styled(
+                format!("{:<10}", truncate_fit(&mt.fs, 9)),
+                Style::default().fg(GRAY),
+            ),
+            Span::styled(
+                format!("{:>10.1}", mt.total_gib),
+                Style::default().fg(WHITE),
+            ),
+            Span::styled(
+                format!("{:>8.1}", mt.used_pct),
+                Style::default().fg(pct_col),
+            ),
+        ]));
+    }
+    out.push(sep(width));
+
+    out.push(header("INTERFACES"));
+    out.push(Line::from(Span::styled(
+        format!("{:<18}{:>14}{:>14}", "IFACE", "RX MiB", "TX MiB"),
+        Style::default().fg(GRAY),
+    )));
+    for nf in &m.ifaces {
+        out.push(Line::from(vec![
+            Span::styled(
+                format!("{:<18}", truncate_fit(&nf.name, 17)),
+                Style::default().fg(WHITE),
+            ),
+            Span::styled(format!("{:>14.1}", nf.rx_mib), Style::default().fg(CYAN)),
+            Span::styled(format!("{:>14.1}", nf.tx_mib), Style::default().fg(YELLOW)),
+        ]));
     }
     out
 }
@@ -637,6 +700,30 @@ mod tests {
         // Mem sort flips the order.
         let by_mem = render_view(&m, &h, 80, 30, View::Processes(Sort::Mem));
         assert!(by_mem.find("low_cpu_hi_mem").unwrap() < by_mem.find("hi_cpu_low_mem").unwrap());
+    }
+
+    #[test]
+    fn detail_view_lists_mounts_and_interfaces() {
+        use crate::metrics::{IfaceInfo, MountInfo};
+        let m = Metrics {
+            mounts: vec![MountInfo {
+                mount: "/".into(),
+                fs: "ext4".into(),
+                total_gib: 100.0,
+                used_pct: 42.0,
+            }],
+            ifaces: vec![IfaceInfo {
+                name: "eth0".into(),
+                rx_mib: 12.5,
+                tx_mib: 3.2,
+            }],
+            ..Default::default()
+        };
+        let text = render_view(&m, &History::default(), 90, 30, View::Detail);
+        assert!(text.contains("MOUNTS"));
+        assert!(text.contains("ext4"));
+        assert!(text.contains("INTERFACES"));
+        assert!(text.contains("eth0"));
     }
 
     #[test]
