@@ -248,6 +248,40 @@ fn build(m: &Metrics, h: &crate::metrics::History, width: usize) -> Vec<Line<'st
     ]));
     out.push(sep(width));
 
+    // GPU (only when one is detected)
+    if let Some(g) = &m.gpu {
+        out.push(header("GPU"));
+        out.push(kv("Device", truncate_fit(&g.name, 40)));
+        if let Some(u) = g.util_pct {
+            out.push(bar_row("GPU Util", format!("{u:.0} %"), u, u < 90.0, width));
+        }
+        if let Some(t) = g.temp_c {
+            out.push(Line::from(vec![
+                lbl("GPU Temp"),
+                Span::styled(
+                    format!("{:>8}   ", format!("{t:.1} °C")),
+                    Style::default().fg(WHITE),
+                ),
+                status(t < 85.0),
+            ]));
+        }
+        if let (Some(used), Some(total)) = (g.mem_used_mib, g.mem_total_mib) {
+            let pct = if total > 0.0 {
+                used / total * 100.0
+            } else {
+                0.0
+            };
+            out.push(bar_row(
+                "GPU VRAM",
+                format!("{used:.0}/{total:.0} MiB"),
+                pct,
+                pct < 90.0,
+                width,
+            ));
+        }
+        out.push(sep(width));
+    }
+
     // MEMORY / STORAGE
     out.push(header("MEMORY / STORAGE"));
     out.push(bar_row(
@@ -724,6 +758,29 @@ mod tests {
         assert!(text.contains("ext4"));
         assert!(text.contains("INTERFACES"));
         assert!(text.contains("eth0"));
+    }
+
+    #[test]
+    fn gpu_section_only_when_present() {
+        use crate::metrics::GpuInfo;
+        let h = History::default();
+        // No GPU -> no GPU header.
+        assert!(!render_to(&Metrics::default(), &h, 100, 50).contains("GPU"));
+        // GPU present -> section with name, util, VRAM.
+        let m = Metrics {
+            gpu: Some(GpuInfo {
+                name: "NVIDIA RTX 3080".into(),
+                util_pct: Some(37.0),
+                temp_c: Some(52.0),
+                mem_used_mib: Some(1234.0),
+                mem_total_mib: Some(10240.0),
+            }),
+            ..Default::default()
+        };
+        let text = render_to(&m, &h, 100, 50);
+        assert!(text.contains("GPU Util"));
+        assert!(text.contains("NVIDIA RTX 3080"));
+        assert!(text.contains("MiB"));
     }
 
     #[test]

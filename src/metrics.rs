@@ -10,6 +10,7 @@
 
 use std::collections::VecDeque;
 use std::fs;
+use std::process::Command;
 use std::time::Instant;
 
 use serde::Serialize;
@@ -29,6 +30,17 @@ pub struct Proc {
     pub pid: u32,
     pub cpu: f64,
     pub mem_pct: f64,
+}
+
+/// GPU snapshot, shown only when a GPU is detected. All metric fields are
+/// optional so partial data (e.g. name + temp but no utilization) still renders.
+#[derive(Clone, Serialize)]
+pub struct GpuInfo {
+    pub name: String,
+    pub util_pct: Option<f64>,
+    pub temp_c: Option<f64>,
+    pub mem_used_mib: Option<f64>,
+    pub mem_total_mib: Option<f64>,
 }
 
 /// A mounted filesystem for the detail view.
@@ -128,6 +140,8 @@ pub struct Metrics {
     pub mounts: Vec<MountInfo>,
     /// All non-loopback interfaces (cumulative totals), for the detail view.
     pub ifaces: Vec<IfaceInfo>,
+    /// GPU info when one is detected; `None` otherwise (no GPU section renders).
+    pub gpu: Option<GpuInfo>,
 }
 
 impl Default for Metrics {
@@ -179,6 +193,7 @@ impl Default for Metrics {
             procs: Vec::new(),
             mounts: Vec::new(),
             ifaces: Vec::new(),
+            gpu: None,
         }
     }
 }
@@ -213,6 +228,9 @@ pub struct Collector {
     last_net: Instant,
     /// Highest CPU frequency seen so far — a max-freq fallback off Linux/cpufreq.
     peak_freq_mhz: u64,
+    /// While true, probe for a GPU each tick; cleared after the first miss so
+    /// GPU-less hosts pay only one probe.
+    probe_gpu: bool,
     thresholds: Thresholds,
     pub metrics: Metrics,
     pub history: History,
@@ -237,6 +255,7 @@ impl Collector {
             prev_diskstats: read_diskstats().map(|(r, w)| (r, w, Instant::now())),
             last_net: Instant::now(),
             peak_freq_mhz: 0,
+            probe_gpu: true,
             thresholds,
             metrics: Metrics::default(),
             history: History::default(),
@@ -422,6 +441,15 @@ impl Collector {
         procs.sort_by(|a, b| b.cpu.max(b.mem_pct).total_cmp(&a.cpu.max(a.mem_pct)));
         m.procs = procs;
 
+        // ---- GPU (optional; stop probing after the first miss) ----
+        if self.probe_gpu {
+            let gpu = detect_gpu();
+            if gpu.is_none() {
+                self.probe_gpu = false;
+            }
+            m.gpu = gpu;
+        }
+
         // ---- derived heuristics (thresholds come from config) ----
         let (health, why) = derive_system_health(m, &t);
         m.system_health = health;
@@ -578,6 +606,82 @@ fn parse_diskstats(content: &str) -> (u64, u64) {
         written += f[9].parse::<u64>().unwrap_or(0);
     }
     (read, written)
+}
+
+/// Detect a GPU: NVIDIA via `nvidia-smi`, else an AMD/Intel DRM card via sysfs.
+/// `None` when nothing usable is found (no GPU section then renders).
+fn detect_gpu() -> Option<GpuInfo> {
+    read_nvidia_gpu().or_else(read_drm_gpu)
+}
+
+/// Query `nvidia-smi` and parse the first GPU's line.
+fn read_nvidia_gpu() -> Option<GpuInfo> {
+    let out = Command::new("nvidia-smi")
+        .args([
+            "--query-gpu=name,utilization.gpu,temperature.gpu,memory.used,memory.total",
+            "--format=csv,noheader,nounits",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    parse_nvidia_smi(text.lines().next().unwrap_or(""))
+}
+
+/// Parse one `nvidia-smi` CSV line (`name, util, temp, mem_used, mem_total`).
+/// Non-numeric fields (e.g. `[N/A]`) become `None`.
+fn parse_nvidia_smi(line: &str) -> Option<GpuInfo> {
+    let f: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+    if f.len() < 5 || f[0].is_empty() {
+        return None;
+    }
+    let num = |s: &str| s.parse::<f64>().ok();
+    Some(GpuInfo {
+        name: f[0].to_string(),
+        util_pct: num(f[1]),
+        temp_c: num(f[2]),
+        mem_used_mib: num(f[3]),
+        mem_total_mib: num(f[4]),
+    })
+}
+
+/// AMD/Intel GPU via `/sys/class/drm/card*/device`: requires `gpu_busy_percent`
+/// (so we skip dumb framebuffer/BMC chips like `ast`).
+fn read_drm_gpu() -> Option<GpuInfo> {
+    for n in 0..8 {
+        let dev = format!("/sys/class/drm/card{n}/device");
+        let busy = read_first_line(&format!("{dev}/gpu_busy_percent"));
+        let Some(busy) = busy else { continue };
+        let mib = |p: String| {
+            read_first_line(&p)
+                .and_then(|s| s.parse::<f64>().ok())
+                .map(|b| b / 1024.0 / 1024.0)
+        };
+        let temp = read_first_line(&format!("{dev}/hwmon/hwmon0/temp1_input"))
+            .or_else(|| read_first_line(&format!("{dev}/hwmon/hwmon1/temp1_input")))
+            .and_then(|s| s.parse::<f64>().ok())
+            .map(|milli| milli / 1000.0);
+        let name = drm_driver(n).unwrap_or_else(|| "GPU".to_string());
+        return Some(GpuInfo {
+            name,
+            util_pct: busy.parse::<f64>().ok(),
+            temp_c: temp,
+            mem_used_mib: mib(format!("{dev}/mem_info_vram_used")),
+            mem_total_mib: mib(format!("{dev}/mem_info_vram_total")),
+        });
+    }
+    None
+}
+
+/// Read the DRM card's driver name from its `uevent` (`DRIVER=...`).
+fn drm_driver(n: u32) -> Option<String> {
+    let content = fs::read_to_string(format!("/sys/class/drm/card{n}/device/uevent")).ok()?;
+    content
+        .lines()
+        .find_map(|l| l.strip_prefix("DRIVER="))
+        .map(|d| d.to_string())
 }
 
 /// Choose the interface to display and rate: the default-route link when known,
@@ -1002,6 +1106,25 @@ eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000";
         assert!(adv.iter().any(|a| a.contains("Memory pressure")));
         assert!(adv.iter().any(|a| a.contains("Swapping")));
         assert!(adv.iter().any(|a| a.contains("Disk nearly full")));
+    }
+
+    #[test]
+    fn nvidia_smi_parses_and_tolerates_na() {
+        let g = parse_nvidia_smi("NVIDIA GeForce RTX 3080, 37, 52, 1234, 10240").unwrap();
+        assert_eq!(g.name, "NVIDIA GeForce RTX 3080");
+        assert_eq!(g.util_pct, Some(37.0));
+        assert_eq!(g.temp_c, Some(52.0));
+        assert_eq!(g.mem_used_mib, Some(1234.0));
+        assert_eq!(g.mem_total_mib, Some(10240.0));
+
+        // [N/A] fields parse to None but the GPU is still reported.
+        let g = parse_nvidia_smi("Tesla T4, [N/A], 40, 100, 16000").unwrap();
+        assert_eq!(g.util_pct, None);
+        assert_eq!(g.temp_c, Some(40.0));
+
+        // garbage / empty -> None
+        assert!(parse_nvidia_smi("").is_none());
+        assert!(parse_nvidia_smi("only,three,fields").is_none());
     }
 
     #[test]
