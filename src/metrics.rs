@@ -34,6 +34,15 @@ pub struct HealthFlags {
 }
 
 /// A single snapshot of everything the dashboard shows.
+/// A process and its usage of a single resource (CPU or RAM), as a percentage.
+/// A named struct (rather than a tuple) so `--json` emits stable
+/// `{"name": ..., "pct": ...}` objects instead of positional arrays.
+#[derive(Clone, Serialize)]
+pub struct ProcUsage {
+    pub name: String,
+    pub pct: f64,
+}
+
 #[derive(Clone, Serialize)]
 pub struct Metrics {
     // identity / system
@@ -81,8 +90,8 @@ pub struct Metrics {
     pub power: String,
     pub workload: String,
     pub storage_note: String,
-    pub top_cpu: (String, f64),
-    pub top_ram: (String, f64),
+    pub top_cpu: ProcUsage,
+    pub top_ram: ProcUsage,
 }
 
 impl Default for Metrics {
@@ -123,8 +132,14 @@ impl Default for Metrics {
             power: "—".into(),
             workload: "—".into(),
             storage_note: "—".into(),
-            top_cpu: ("—".into(), 0.0),
-            top_ram: ("—".into(), 0.0),
+            top_cpu: ProcUsage {
+                name: "—".into(),
+                pct: 0.0,
+            },
+            top_ram: ProcUsage {
+                name: "—".into(),
+                pct: 0.0,
+            },
         }
     }
 }
@@ -288,15 +303,28 @@ impl Collector {
         );
 
         // ---- top processes ----
-        let (mut top_cpu, mut top_ram) = (("—".to_string(), 0.0_f64), ("—".to_string(), 0.0_f64));
+        let mut top_cpu = ProcUsage {
+            name: "—".to_string(),
+            pct: 0.0,
+        };
+        let mut top_ram = ProcUsage {
+            name: "—".to_string(),
+            pct: 0.0,
+        };
         for proc in self.sys.processes().values() {
             let cpu = proc.cpu_usage() as f64;
-            if cpu > top_cpu.1 {
-                top_cpu = (proc.name().to_string(), cpu);
+            if cpu > top_cpu.pct {
+                top_cpu = ProcUsage {
+                    name: proc.name().to_string(),
+                    pct: cpu,
+                };
             }
             let ram = pct(proc.memory(), total);
-            if ram > top_ram.1 {
-                top_ram = (proc.name().to_string(), ram);
+            if ram > top_ram.pct {
+                top_ram = ProcUsage {
+                    name: proc.name().to_string(),
+                    pct: ram,
+                };
             }
         }
         m.top_cpu = top_cpu;

@@ -237,11 +237,11 @@ fn build(m: &Metrics, h: &crate::metrics::History, width: usize) -> Vec<Line<'st
     ));
     out.push(kv(
         "Top CPU Proc",
-        format!("{} {:.1}%", m.top_cpu.0, m.top_cpu.1),
+        format!("{} {:.1}%", m.top_cpu.name, m.top_cpu.pct),
     ));
     out.push(kv(
         "Top RAM Proc",
-        format!("{} {:.1}%", m.top_ram.0, m.top_ram.1),
+        format!("{} {:.1}%", m.top_ram.name, m.top_ram.pct),
     ));
     out.extend(advisory_rows(&m.advisories));
 
