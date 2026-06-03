@@ -17,7 +17,8 @@ sysinfo = "0.30"
 # Supplementary backend for signals sysinfo lacks (battery, AC power, portable
 # CPU temperature). Keep sysinfo primary; systemstat is the cross-platform backstop.
 systemstat = "0.2"
-signal-hook = "0.3"
+# Only the `flag` + `consts` API is used; drop the iterator/channel machinery.
+signal-hook = { version = "0.3", default-features = false }
 
 [profile.release]
 opt-level = "z"

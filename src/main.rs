@@ -1,7 +1,8 @@
 //! SystemStat — a single-binary terminal system-monitor dashboard.
 //!
 //! Sets up the alternate-screen terminal, then loops: redraw, poll input,
-//! and refresh metrics once per second. Quits on `q`, `Esc`, or `Ctrl-C`.
+//! and refresh metrics once per second. Quits on `q`, `Esc`, or `Ctrl-C`,
+//! and restores the terminal on SIGTERM/SIGINT/SIGHUP.
 
 mod metrics;
 mod ui;
@@ -66,7 +67,10 @@ fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>) -> io::Result<()> {
                 }
             }
             Ok(false) => {}
-            // A signal interrupts the poll syscall (EINTR); treat as a clean exit.
+            // Defensive: crossterm 0.27 retries on EINTR internally and reports a
+            // Ok(false) timeout rather than an error when a signal fires, so the
+            // top-of-loop flag check is the real exit path (≤POLL latency). This arm
+            // only matters if a future crossterm surfaces EINTR as an error.
             Err(_) if shutdown.load(Ordering::Relaxed) => return Ok(()),
             Err(e) => return Err(e),
         }
