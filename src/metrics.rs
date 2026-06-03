@@ -12,6 +12,7 @@ use std::collections::VecDeque;
 use std::fs;
 use std::time::Instant;
 
+use serde::Serialize;
 use sysinfo::{Components, Disks, Networks, System};
 use systemstat::{Platform, System as StatSystem};
 
@@ -20,7 +21,7 @@ const HISTORY_LEN: usize = 120;
 /// Cross-platform health flags surfaced under POWER / HEALTH. All are derived
 /// from generally-available data (temperature, cpufreq, load, memory) so they
 /// work on any architecture and degrade to `false` where a signal is missing.
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Serialize)]
 pub struct HealthFlags {
     /// CPU temperature at or above the warning threshold.
     pub thermal_warn: bool,
@@ -33,7 +34,7 @@ pub struct HealthFlags {
 }
 
 /// A single snapshot of everything the dashboard shows.
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
 pub struct Metrics {
     // identity / system
     pub iface: String,

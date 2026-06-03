@@ -101,7 +101,74 @@ fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>) -> io::Result<()> {
     }
 }
 
+const USAGE: &str = "\
+systemstat — terminal system-monitor dashboard
+
+USAGE:
+    systemstat [OPTIONS]
+
+OPTIONS:
+    --once, --snapshot   Print one plain-text frame and exit
+    --json               Print the current metrics as JSON and exit
+    -h, --help           Show this help and exit
+    -V, --version        Show version and exit
+
+With no options, runs the interactive dashboard (quit with q/Esc/Ctrl-C).";
+
+enum Mode {
+    Interactive,
+    Once,
+    Json,
+}
+
+fn parse_args() -> Mode {
+    let mut mode = Mode::Interactive;
+    for arg in std::env::args().skip(1) {
+        match arg.as_str() {
+            "--once" | "--snapshot" => mode = Mode::Once,
+            "--json" => mode = Mode::Json,
+            "-h" | "--help" => {
+                println!("{USAGE}");
+                std::process::exit(0);
+            }
+            "-V" | "--version" => {
+                println!("systemstat {}", env!("CARGO_PKG_VERSION"));
+                std::process::exit(0);
+            }
+            other => {
+                eprintln!("error: unknown argument '{other}'\n\n{USAGE}");
+                std::process::exit(2);
+            }
+        }
+    }
+    mode
+}
+
+/// Non-interactive output: sample twice (so rates are populated) then print.
+fn snapshot(json: bool) -> io::Result<()> {
+    let mut c = Collector::new();
+    c.refresh();
+    std::thread::sleep(REFRESH);
+    c.refresh();
+    if json {
+        let out = serde_json::to_string_pretty(&c.metrics).expect("metrics serialize");
+        println!("{out}");
+    } else {
+        let width = crossterm::terminal::size()
+            .map(|(w, _)| w as usize)
+            .unwrap_or(100);
+        println!("{}", ui::snapshot(&c, width));
+    }
+    Ok(())
+}
+
 fn main() -> io::Result<()> {
+    match parse_args() {
+        Mode::Once => return snapshot(false),
+        Mode::Json => return snapshot(true),
+        Mode::Interactive => {}
+    }
+
     // Restore the terminal even if rendering or collection panics.
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {

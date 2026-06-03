@@ -55,6 +55,20 @@ pub fn render(f: &mut Frame, c: &Collector, scroll: u16) -> u16 {
     max_scroll
 }
 
+/// Plain-text (uncolored) snapshot of the dashboard, for `--once`.
+pub fn snapshot(c: &Collector, width: usize) -> String {
+    build(&c.metrics, &c.history, width)
+        .iter()
+        .map(|line| {
+            line.spans
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn build(m: &Metrics, h: &crate::metrics::History, width: usize) -> Vec<Line<'static>> {
     let mut out: Vec<Line> = Vec::new();
 
