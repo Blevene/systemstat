@@ -106,6 +106,14 @@ scp target/aarch64-unknown-linux-gnu/release/systemstat pi@raspberrypi.local:~
 For a 32-bit Pi OS use `armv7-unknown-linux-gnueabihf` instead. For a fully static
 binary, target the `musl` variants (e.g. `aarch64-unknown-linux-musl`).
 
+## Always-on / kiosk mode
+
+`systemstat --kiosk` runs the dashboard but ignores `q`/`Esc`, so a dedicated
+display won't exit on a stray keypress (exit via `Ctrl-C` or `SIGTERM`). A sample
+systemd unit that drives a console (e.g. `tty1`) is in `docs/systemstat.service`;
+stopping the service sends `SIGTERM`, which the dashboard handles to restore the
+console.
+
 ## Notes
 
 - INSIGHTS (overall status + advisories), the POWER/HEALTH flags (thermal /

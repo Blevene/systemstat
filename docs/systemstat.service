@@ -1,0 +1,31 @@
+# Always-on SystemStat dashboard on a dedicated console (e.g. tty1).
+#
+# Install:
+#   sudo cp target/release/systemstat /usr/local/bin/
+#   sudo cp docs/systemstat.service /etc/systemd/system/
+#   sudo systemctl disable getty@tty1        # free the console
+#   sudo systemctl enable --now systemstat
+#
+# Stop cleanly with `sudo systemctl stop systemstat` — the SIGTERM handler
+# restores the console.
+
+[Unit]
+Description=SystemStat dashboard (kiosk)
+After=multi-user.target
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/systemstat --kiosk
+Restart=always
+RestartSec=2
+
+# Give the process the console so the TUI can draw and read keys.
+StandardInput=tty
+StandardOutput=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+
+[Install]
+WantedBy=multi-user.target

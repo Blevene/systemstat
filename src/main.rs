@@ -44,7 +44,12 @@ fn restore() {
 /// Rows scrolled per PageUp/PageDown — roughly one dashboard section.
 const PAGE: u16 = 10;
 
-fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>, config: &Config) -> io::Result<()> {
+fn run(
+    terminal: &mut Term,
+    shutdown: &Arc<AtomicBool>,
+    config: &Config,
+    kiosk: bool,
+) -> io::Result<()> {
     let refresh = Duration::from_secs(config.refresh_secs);
     let mut collector = Collector::with_thresholds(config.thresholds);
     let mut last_refresh = Instant::now();
@@ -71,7 +76,9 @@ fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>, config: &Config) -> io::
                     if key.kind == KeyEventKind::Press {
                         let ctrl_c = key.code == KeyCode::Char('c')
                             && key.modifiers.contains(KeyModifiers::CONTROL);
-                        if ctrl_c || matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) {
+                        // Kiosk mode ignores q/Esc; exit only via Ctrl-C or a signal.
+                        let quit_key = matches!(key.code, KeyCode::Char('q') | KeyCode::Esc);
+                        if ctrl_c || (!kiosk && quit_key) {
                             return Ok(());
                         }
                         match key.code {
@@ -134,6 +141,8 @@ USAGE:
 OPTIONS:
     --once, --snapshot   Print one plain-text frame and exit
     --json               Print the current metrics as JSON and exit
+    --kiosk              Always-on mode: ignore q/Esc (exit only via Ctrl-C or a
+                         signal). Intended for a dedicated always-on display.
     -h, --help           Show this help and exit
     -V, --version        Show version and exit
 
@@ -153,12 +162,21 @@ enum Mode {
     Json,
 }
 
-fn parse_args() -> Mode {
-    let mut mode = Mode::Interactive;
+struct Args {
+    mode: Mode,
+    kiosk: bool,
+}
+
+fn parse_args() -> Args {
+    let mut args = Args {
+        mode: Mode::Interactive,
+        kiosk: false,
+    };
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
-            "--once" | "--snapshot" => mode = Mode::Once,
-            "--json" => mode = Mode::Json,
+            "--once" | "--snapshot" => args.mode = Mode::Once,
+            "--json" => args.mode = Mode::Json,
+            "--kiosk" => args.kiosk = true,
             "-h" | "--help" => {
                 println!("{USAGE}");
                 std::process::exit(0);
@@ -173,7 +191,7 @@ fn parse_args() -> Mode {
             }
         }
     }
-    mode
+    args
 }
 
 /// Non-interactive output: sample twice (so rates are populated) then print.
@@ -197,9 +215,9 @@ fn snapshot(json: bool, config: &Config) -> io::Result<()> {
 }
 
 fn main() -> io::Result<()> {
-    let mode = parse_args();
+    let args = parse_args();
     let config = Config::load();
-    match mode {
+    match args.mode {
         Mode::Once => return snapshot(false, &config),
         Mode::Json => return snapshot(true, &config),
         Mode::Interactive => {}
@@ -220,7 +238,7 @@ fn main() -> io::Result<()> {
     }
 
     let mut terminal = setup()?;
-    let result = run(&mut terminal, &shutdown, &config);
+    let result = run(&mut terminal, &shutdown, &config, args.kiosk);
     restore();
     result
 }
