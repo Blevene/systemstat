@@ -19,8 +19,26 @@ const GRAY: Color = Color::Gray;
 
 const LBL: usize = 13;
 
-pub fn render(f: &mut Frame, c: &Collector) {
+const MIN_W: u16 = 30;
+const MIN_H: u16 = 8;
+
+/// Render the dashboard scrolled by `scroll` rows. Returns the maximum useful
+/// scroll offset (content rows beyond the viewport) so the caller can clamp.
+pub fn render(f: &mut Frame, c: &Collector, scroll: u16) -> u16 {
     let area = f.size();
+    if area.width < MIN_W || area.height < MIN_H {
+        let msg = format!(
+            "Terminal too small\nneed at least {MIN_W}x{MIN_H}\n(have {}x{})",
+            area.width, area.height
+        );
+        f.render_widget(
+            Paragraph::new(msg)
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(YELLOW)),
+            area,
+        );
+        return 0;
+    }
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(GRAY));
@@ -29,7 +47,10 @@ pub fn render(f: &mut Frame, c: &Collector) {
 
     let width = inner.width as usize;
     let lines = build(&c.metrics, &c.history, width);
-    f.render_widget(Paragraph::new(lines), inner);
+    let max_scroll = (lines.len() as u16).saturating_sub(inner.height);
+    let scroll = scroll.min(max_scroll);
+    f.render_widget(Paragraph::new(lines).scroll((scroll, 0)), inner);
+    max_scroll
 }
 
 fn build(m: &Metrics, h: &crate::metrics::History, width: usize) -> Vec<Line<'static>> {

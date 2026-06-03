@@ -40,10 +40,14 @@ fn restore() {
     let _ = execute!(io::stdout(), LeaveAlternateScreen);
 }
 
+const PAGE: u16 = 10;
+
 fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>) -> io::Result<()> {
     let mut collector = Collector::new();
     let mut last_refresh = Instant::now();
     collector.refresh();
+    let mut scroll: u16 = 0;
+    let mut max_scroll: u16 = 0;
 
     loop {
         // A SIGTERM/SIGINT/SIGHUP sets this; exit so main() can restore the terminal.
@@ -51,7 +55,8 @@ fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>) -> io::Result<()> {
             return Ok(());
         }
 
-        terminal.draw(|f| ui::render(f, &collector))?;
+        terminal.draw(|f| max_scroll = ui::render(f, &collector, scroll))?;
+        scroll = scroll.min(max_scroll);
 
         // Block at most POLL so the UI stays responsive between refreshes.
         match event::poll(POLL) {
@@ -62,6 +67,19 @@ fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>) -> io::Result<()> {
                             && key.modifiers.contains(KeyModifiers::CONTROL);
                         if ctrl_c || matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) {
                             return Ok(());
+                        }
+                        match key.code {
+                            KeyCode::Up | KeyCode::Char('k') => scroll = scroll.saturating_sub(1),
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                scroll = scroll.saturating_add(1).min(max_scroll)
+                            }
+                            KeyCode::PageUp => scroll = scroll.saturating_sub(PAGE),
+                            KeyCode::PageDown => {
+                                scroll = scroll.saturating_add(PAGE).min(max_scroll)
+                            }
+                            KeyCode::Home => scroll = 0,
+                            KeyCode::End => scroll = max_scroll,
+                            _ => {}
                         }
                     }
                 }
