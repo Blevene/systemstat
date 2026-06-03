@@ -90,7 +90,7 @@ fn build_processes(m: &Metrics, width: usize, sort: Sort) -> Vec<Line<'static>> 
     ));
     out.push(sep(width));
     out.push(header(&format!(
-        "PROCESSES   (Tab: dashboard    s: sort by {other})"
+        "PROCESSES   (Tab: detail    s: sort by {other})"
     )));
     out.push(Line::from(Span::styled(
         format!("{:>7}  {:<28}{:>8}{:>8}", "PID", "NAME", "CPU%", "MEM%"),
@@ -203,7 +203,7 @@ fn build(m: &Metrics, h: &crate::metrics::History, width: usize) -> Vec<Line<'st
     // Title bar
     out.push(two_sided(
         "SystemStat",
-        &format!("Interface: {} | Refresh: 1s", m.iface),
+        &format!("Interface: {} | Tab: processes / detail", m.iface),
         width,
         Style::default().fg(CYAN).add_modifier(Modifier::BOLD),
         Style::default().fg(GRAY),

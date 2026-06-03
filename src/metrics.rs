@@ -346,7 +346,7 @@ impl Collector {
         m.ifaces = self
             .networks
             .iter()
-            .filter(|(n, _)| n.as_str() != "lo" && !n.starts_with("lo"))
+            .filter(|(n, _)| !is_loopback(n.as_str()))
             .map(|(n, d)| IfaceInfo {
                 name: n.clone(),
                 rx_mib: d.total_received() as f64 / 1024.0 / 1024.0,
@@ -582,15 +582,21 @@ fn parse_diskstats(content: &str) -> (u64, u64) {
 
 /// Choose the interface to display and rate: the default-route link when known,
 /// otherwise the busiest non-loopback link (avoids latching onto a virtual
+/// True for loopback interfaces: `lo` (Linux) and `lo0`/`lo1`… (BSD/macOS).
+/// Deliberately narrow so real interfaces like `lobby0` aren't hidden.
+fn is_loopback(name: &str) -> bool {
+    name == "lo"
+        || (name.len() > 2
+            && name.starts_with("lo")
+            && name[2..].bytes().all(|b| b.is_ascii_digit()))
+}
+
 /// bridge). Returns (name, bytes received this tick, bytes transmitted this tick).
 fn primary_iface(networks: &Networks) -> Option<(String, u64, u64)> {
     // (name, recv_this_tick, sent_this_tick, cumulative_bytes) for real links.
     let mut links: Vec<(String, u64, u64, u64)> = networks
         .iter()
-        .filter(|(n, _)| {
-            let n = n.as_str();
-            n != "lo" && !n.starts_with("lo")
-        })
+        .filter(|(n, _)| !is_loopback(n.as_str()))
         .map(|(n, d)| {
             (
                 n.clone(),
@@ -795,6 +801,16 @@ fn advisories(m: &Metrics, t: &Thresholds) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn is_loopback_matches_only_real_loopbacks() {
+        assert!(is_loopback("lo")); // Linux
+        assert!(is_loopback("lo0")); // BSD/macOS
+        assert!(is_loopback("lo1"));
+        assert!(!is_loopback("lobby0")); // real iface, must not be hidden
+        assert!(!is_loopback("local0"));
+        assert!(!is_loopback("eth0"));
+    }
 
     #[test]
     fn pct_handles_zero_total() {
