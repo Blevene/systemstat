@@ -659,10 +659,7 @@ fn read_drm_gpu() -> Option<GpuInfo> {
                 .and_then(|s| s.parse::<f64>().ok())
                 .map(|b| b / 1024.0 / 1024.0)
         };
-        let temp = read_first_line(&format!("{dev}/hwmon/hwmon0/temp1_input"))
-            .or_else(|| read_first_line(&format!("{dev}/hwmon/hwmon1/temp1_input")))
-            .and_then(|s| s.parse::<f64>().ok())
-            .map(|milli| milli / 1000.0);
+        let temp = read_gpu_hwmon_temp(&dev);
         let name = drm_driver(n).unwrap_or_else(|| "GPU".to_string());
         return Some(GpuInfo {
             name,
@@ -671,6 +668,23 @@ fn read_drm_gpu() -> Option<GpuInfo> {
             mem_used_mib: mib(format!("{dev}/mem_info_vram_used")),
             mem_total_mib: mib(format!("{dev}/mem_info_vram_total")),
         });
+    }
+    None
+}
+
+/// GPU edge temperature (°C) from any hwmon node under the card. The hwmon
+/// index isn't stable across boots, so scan `{dev}/hwmon/*/temp1_input` rather
+/// than hard-coding hwmon0/hwmon1.
+fn read_gpu_hwmon_temp(dev: &str) -> Option<f64> {
+    for entry in fs::read_dir(format!("{dev}/hwmon")).ok()?.flatten() {
+        let path = entry.path().join("temp1_input");
+        if let Some(milli) = path
+            .to_str()
+            .and_then(read_first_line)
+            .and_then(|s| s.parse::<f64>().ok())
+        {
+            return Some(milli / 1000.0);
+        }
     }
     None
 }
