@@ -16,6 +16,8 @@ use serde::Serialize;
 use sysinfo::{Components, Disks, Networks, System};
 use systemstat::{Platform, System as StatSystem};
 
+use crate::config::Thresholds;
+
 const HISTORY_LEN: usize = 120;
 
 /// Cross-platform health flags surfaced under POWER / HEALTH. All are derived
@@ -174,12 +176,17 @@ pub struct Collector {
     last_net: Instant,
     /// Highest CPU frequency seen so far — a max-freq fallback off Linux/cpufreq.
     peak_freq_mhz: u64,
+    thresholds: Thresholds,
     pub metrics: Metrics,
     pub history: History,
 }
 
 impl Collector {
     pub fn new() -> Self {
+        Self::with_thresholds(Thresholds::default())
+    }
+
+    pub fn with_thresholds(thresholds: Thresholds) -> Self {
         let sys = System::new_all();
         let networks = Networks::new_with_refreshed_list();
         let disks = Disks::new_with_refreshed_list();
@@ -193,6 +200,7 @@ impl Collector {
             prev_diskstats: read_diskstats().map(|(r, w)| (r, w, Instant::now())),
             last_net: Instant::now(),
             peak_freq_mhz: 0,
+            thresholds,
             metrics: Metrics::default(),
             history: History::default(),
         };
@@ -218,6 +226,7 @@ impl Collector {
         self.disks.refresh();
         self.components.refresh();
 
+        let t = self.thresholds; // Copy; lets us borrow self.metrics mutably below.
         let m = &mut self.metrics;
 
         // ---- CPU / thermal ----
@@ -300,6 +309,7 @@ impl Collector {
             m.load_per_core,
             m.ram_pct,
             m.swap_pct,
+            &t,
         );
 
         // ---- top processes ----
@@ -330,12 +340,12 @@ impl Collector {
         m.top_cpu = top_cpu;
         m.top_ram = top_ram;
 
-        // ---- derived heuristics (tune the thresholds in the helpers below) ----
-        let (health, why) = derive_system_health(m);
+        // ---- derived heuristics (thresholds come from config) ----
+        let (health, why) = derive_system_health(m, &t);
         m.system_health = health;
         m.health_why = why;
         m.storage_health = derive_storage_health(m.disk_pct);
-        m.alerts = count_alerts(m);
+        m.alerts = count_alerts(m, &t);
 
         // insight strings.
         m.cooling = cooling_label(m.cpu_temp).into();
@@ -343,7 +353,7 @@ impl Collector {
         m.workload = workload_label(m.cpu_load).into();
         m.storage_note = storage_note_label(m.disk_pct).into();
         m.status = overall_status(m.system_health, m.storage_health, m.alerts).into();
-        let adv = advisories(m);
+        let adv = advisories(m, &t);
         m.advisories = adv;
 
         // ---- history (push after this tick's values are settled) ----
@@ -549,6 +559,7 @@ fn parse_default_route(content: &str) -> Option<String> {
 // ---- pure derivations (unit-tested; tune dashboard thresholds here) ----
 
 /// Cross-platform POWER/HEALTH flags from generally-available signals.
+#[allow(clippy::too_many_arguments)]
 fn derive_health_flags(
     cpu_temp: f64,
     cpu_freq_mhz: u64,
@@ -556,39 +567,41 @@ fn derive_health_flags(
     load_per_core: f64,
     ram_pct: f64,
     swap_pct: f64,
+    t: &Thresholds,
 ) -> HealthFlags {
     HealthFlags {
-        thermal_warn: cpu_temp >= 80.0,
+        thermal_warn: cpu_temp >= t.temp_warn_c,
         freq_scaled: cpu_max_freq_mhz > 0
-            && (cpu_freq_mhz as f64) < 0.9 * (cpu_max_freq_mhz as f64),
-        cpu_pressure: load_per_core > 1.0,
-        mem_pressure: ram_pct > 85.0 || swap_pct > 50.0,
+            && (cpu_freq_mhz as f64) < t.freq_scaled_ratio * (cpu_max_freq_mhz as f64),
+        cpu_pressure: load_per_core > t.load_per_core_high,
+        mem_pressure: ram_pct > t.mem_pressure_pct || swap_pct > t.swap_pressure_pct,
     }
 }
 
 /// System health score (0..=100) plus the dominant reason string.
 /// Reads the already-populated temp/load/cpu fields and `health.mem_pressure`.
-fn derive_system_health(m: &Metrics) -> (f64, String) {
+fn derive_system_health(m: &Metrics, t: &Thresholds) -> (f64, String) {
     let mut health = 100.0_f64;
     let mut why = "nominal".to_string();
-    if m.cpu_temp > 80.0 {
+    // Two caution tiers below the configured warning temperature.
+    if m.cpu_temp >= t.temp_warn_c {
         health -= 30.0;
         why = format!("temp {:.0}°C", m.cpu_temp);
-    } else if m.cpu_temp > 70.0 {
+    } else if m.cpu_temp > t.temp_warn_c - 10.0 {
         health -= 15.0;
         why = format!("temp {:.0}°C", m.cpu_temp);
-    } else if m.cpu_temp > 60.0 {
+    } else if m.cpu_temp > t.temp_warn_c - 20.0 {
         health -= 5.0;
     }
-    if m.load_per_core > 2.0 {
+    if m.load_per_core > 2.0 * t.load_per_core_high {
         health -= 20.0;
         if why == "nominal" {
             why = format!("load {:.2}", m.load1);
         }
-    } else if m.load_per_core > 1.0 {
+    } else if m.load_per_core > t.load_per_core_high {
         health -= 10.0;
     }
-    if m.cpu_load > 90.0 {
+    if m.cpu_load > t.cpu_load_high_pct {
         health -= 10.0;
     }
     if m.health.mem_pressure {
@@ -605,15 +618,14 @@ fn derive_storage_health(disk_pct: f64) -> f64 {
     (100.0 - (disk_pct - 70.0).max(0.0) * 1.6).clamp(0.0, 100.0)
 }
 
-/// Count of tripped alert conditions shown in DOCTOR INSIGHT.
-fn count_alerts(m: &Metrics) -> u32 {
+/// Count of tripped alert conditions shown in INSIGHTS.
+fn count_alerts(m: &Metrics, t: &Thresholds) -> u32 {
     let conds = [
         m.health.thermal_warn,
         m.health.cpu_pressure,
         m.health.mem_pressure,
-        m.cpu_load > 90.0,
-        m.disk_pct > 90.0,
-        m.swap_pct > 80.0,
+        m.cpu_load > t.cpu_load_high_pct,
+        m.disk_pct > t.disk_full_pct,
     ];
     conds.iter().filter(|&&c| c).count() as u32
 }
@@ -672,7 +684,7 @@ fn overall_status(system_health: f64, storage_health: f64, alerts: u32) -> &'sta
 
 /// Human-readable, actionable notes for whatever is currently amiss. Empty when
 /// everything is nominal. Reads already-populated `Metrics` fields.
-fn advisories(m: &Metrics) -> Vec<String> {
+fn advisories(m: &Metrics, t: &Thresholds) -> Vec<String> {
     let mut v = Vec::new();
     if m.health.thermal_warn {
         v.push(format!(
@@ -680,7 +692,7 @@ fn advisories(m: &Metrics) -> Vec<String> {
             m.cpu_temp
         ));
     }
-    if m.cpu_load > 90.0 || m.health.cpu_pressure {
+    if m.cpu_load > t.cpu_load_high_pct || m.health.cpu_pressure {
         v.push(format!("High CPU load ({:.2}/core)", m.load_per_core));
     }
     if m.health.mem_pressure {
@@ -689,7 +701,7 @@ fn advisories(m: &Metrics) -> Vec<String> {
     if m.swap_pct > 5.0 {
         v.push(format!("Swapping in use ({:.0}%)", m.swap_pct));
     }
-    if m.disk_pct > 90.0 {
+    if m.disk_pct > t.disk_full_pct {
         v.push(format!(
             "Disk nearly full ({:.0}%) — free space",
             m.disk_pct
@@ -769,25 +781,26 @@ eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000";
 
     #[test]
     fn health_flags_boundaries() {
+        let t = &Thresholds::default();
         // nominal: cool, freq near max, light load, ample memory.
-        let ok = derive_health_flags(50.0, 3000, 3200, 0.3, 40.0, 0.0);
+        let ok = derive_health_flags(50.0, 3000, 3200, 0.3, 40.0, 0.0, t);
         assert!(!ok.thermal_warn && !ok.cpu_pressure && !ok.mem_pressure);
         // 3000/3200 = 93.75% -> not scaled
         assert!(!ok.freq_scaled);
 
         // thermal warning is inclusive at 80.
-        assert!(derive_health_flags(80.0, 3000, 3200, 0.3, 40.0, 0.0).thermal_warn);
-        assert!(!derive_health_flags(79.9, 3000, 3200, 0.3, 40.0, 0.0).thermal_warn);
+        assert!(derive_health_flags(80.0, 3000, 3200, 0.3, 40.0, 0.0, t).thermal_warn);
+        assert!(!derive_health_flags(79.9, 3000, 3200, 0.3, 40.0, 0.0, t).thermal_warn);
 
         // freq scaled when current < 90% of max; unknown max (0) => never scaled.
-        assert!(derive_health_flags(50.0, 1000, 3200, 0.3, 40.0, 0.0).freq_scaled);
-        assert!(!derive_health_flags(50.0, 1000, 0, 0.3, 40.0, 0.0).freq_scaled);
+        assert!(derive_health_flags(50.0, 1000, 3200, 0.3, 40.0, 0.0, t).freq_scaled);
+        assert!(!derive_health_flags(50.0, 1000, 0, 0.3, 40.0, 0.0, t).freq_scaled);
 
         // pressure thresholds.
-        assert!(derive_health_flags(50.0, 3000, 3200, 1.01, 40.0, 0.0).cpu_pressure);
-        assert!(!derive_health_flags(50.0, 3000, 3200, 1.0, 40.0, 0.0).cpu_pressure);
-        assert!(derive_health_flags(50.0, 3000, 3200, 0.3, 90.0, 0.0).mem_pressure);
-        assert!(derive_health_flags(50.0, 3000, 3200, 0.3, 40.0, 60.0).mem_pressure);
+        assert!(derive_health_flags(50.0, 3000, 3200, 1.01, 40.0, 0.0, t).cpu_pressure);
+        assert!(!derive_health_flags(50.0, 3000, 3200, 1.0, 40.0, 0.0, t).cpu_pressure);
+        assert!(derive_health_flags(50.0, 3000, 3200, 0.3, 90.0, 0.0, t).mem_pressure);
+        assert!(derive_health_flags(50.0, 3000, 3200, 0.3, 40.0, 60.0, t).mem_pressure);
     }
 
     fn metrics_with(
@@ -810,24 +823,26 @@ eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000";
 
     #[test]
     fn system_health_nominal_is_full() {
-        let (h, why) = derive_system_health(&metrics_with(45.0, 0.3, 10.0, false));
+        let t = &Thresholds::default();
+        let (h, why) = derive_system_health(&metrics_with(45.0, 0.3, 10.0, false), t);
         assert_eq!(h, 100.0);
         assert_eq!(why, "nominal");
     }
 
     #[test]
     fn system_health_penalises_and_names_dominant_cause() {
+        let t = &Thresholds::default();
         // hot CPU dominates the reason string.
-        let (h, why) = derive_system_health(&metrics_with(85.0, 0.3, 10.0, false));
+        let (h, why) = derive_system_health(&metrics_with(85.0, 0.3, 10.0, false), t);
         assert_eq!(h, 70.0);
         assert!(why.starts_with("temp"));
 
         // memory pressure names itself when nothing hotter trips.
-        let (_h, why) = derive_system_health(&metrics_with(45.0, 0.3, 10.0, true));
+        let (_h, why) = derive_system_health(&metrics_with(45.0, 0.3, 10.0, true), t);
         assert_eq!(why, "memory pressure");
 
         // stacked penalties clamp at 0, never negative.
-        let (h, _why) = derive_system_health(&metrics_with(95.0, 3.0, 95.0, true));
+        let (h, _why) = derive_system_health(&metrics_with(95.0, 3.0, 95.0, true), t);
         assert!(h >= 0.0);
     }
 
@@ -842,12 +857,13 @@ eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000";
 
     #[test]
     fn alerts_count_distinct_conditions() {
+        let t = &Thresholds::default();
         let mut m = Metrics::default();
-        assert_eq!(count_alerts(&m), 0);
+        assert_eq!(count_alerts(&m, t), 0);
         m.health.thermal_warn = true;
         m.cpu_load = 95.0; // > 90
         m.disk_pct = 95.0; // > 90
-        assert_eq!(count_alerts(&m), 3);
+        assert_eq!(count_alerts(&m, t), 3);
     }
 
     #[test]
@@ -865,9 +881,10 @@ eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000";
 
     #[test]
     fn advisories_are_actionable_and_empty_when_nominal() {
+        let t = &Thresholds::default();
         // nominal system -> no advisories
         let ok = metrics_with(45.0, 0.3, 10.0, false);
-        assert!(advisories(&ok).is_empty());
+        assert!(advisories(&ok, t).is_empty());
 
         // hot + memory pressure + swapping + full disk -> four specific notes
         let m = Metrics {
@@ -882,7 +899,7 @@ eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000";
             },
             ..Default::default()
         };
-        let adv = advisories(&m);
+        let adv = advisories(&m, t);
         assert!(adv.iter().any(|a| a.contains("hot")));
         assert!(adv.iter().any(|a| a.contains("Memory pressure")));
         assert!(adv.iter().any(|a| a.contains("Swapping")));

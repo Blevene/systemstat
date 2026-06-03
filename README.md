@@ -110,8 +110,10 @@ binary, target the `musl` variants (e.g. `aarch64-unknown-linux-musl`).
 
 - INSIGHTS (overall status + advisories), the POWER/HEALTH flags (thermal /
   freq-scaled / CPU pressure / mem pressure), and the health/stability figures are
-  derived heuristics (temperature, cpufreq, load, memory, disk). Tune the
-  thresholds in `src/metrics.rs::refresh`.
+  derived heuristics (temperature, cpufreq, load, memory, disk).
+- Thresholds and the refresh interval are configurable via
+  `~/.config/systemstat/config.toml` — see `config.example.toml`. With no file
+  the dashboard runs on defaults, exactly as before.
 - CPU and network rates need two samples, so the first second after launch may read
   low/zero before stabilizing.
 - Truecolor terminals render the olive bar background best; on a 256-color terminal

@@ -1,0 +1,29 @@
+# SystemStat configuration — copy to ~/.config/systemstat/config.toml
+# (or $XDG_CONFIG_HOME/systemstat/config.toml). Every key is optional; omitted
+# keys keep their defaults, and a missing file means "all defaults".
+
+# Dashboard refresh interval, seconds (minimum 1).
+refresh_secs = 1
+
+[thresholds]
+# CPU temperature (°C) at/above which the Thermal Warn flag and the
+# "running hot" advisory trip. Two caution tiers sit 10°C and 20°C below this.
+temp_warn_c = 80.0
+
+# Current CPU frequency below this fraction of the max trips "Freq Scaled".
+freq_scaled_ratio = 0.9
+
+# Load average per core above which "CPU Pressure" trips.
+load_per_core_high = 1.0
+
+# RAM % above which "Mem Pressure" trips.
+mem_pressure_pct = 85.0
+
+# Swap % above which "Mem Pressure" trips.
+swap_pressure_pct = 50.0
+
+# CPU load % treated as "high" for the health score and alerts.
+cpu_load_high_pct = 90.0
+
+# Disk % treated as "nearly full" for alerts and the disk advisory.
+disk_full_pct = 90.0

@@ -4,6 +4,7 @@
 //! and refresh metrics once per second. Quits on `q`, `Esc`, or `Ctrl-C`,
 //! and restores the terminal on SIGTERM/SIGINT/SIGHUP.
 
+mod config;
 mod metrics;
 mod ui;
 
@@ -20,9 +21,9 @@ use crossterm::terminal::{
 use ratatui::prelude::*;
 use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 
+use config::Config;
 use metrics::Collector;
 
-const REFRESH: Duration = Duration::from_secs(1);
 const POLL: Duration = Duration::from_millis(250);
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
@@ -43,8 +44,9 @@ fn restore() {
 /// Rows scrolled per PageUp/PageDown — roughly one dashboard section.
 const PAGE: u16 = 10;
 
-fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>) -> io::Result<()> {
-    let mut collector = Collector::new();
+fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>, config: &Config) -> io::Result<()> {
+    let refresh = Duration::from_secs(config.refresh_secs);
+    let mut collector = Collector::with_thresholds(config.thresholds);
     let mut last_refresh = Instant::now();
     collector.refresh();
     let mut scroll: u16 = 0;
@@ -95,7 +97,7 @@ fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>) -> io::Result<()> {
             Err(e) => return Err(e),
         }
 
-        if last_refresh.elapsed() >= REFRESH {
+        if last_refresh.elapsed() >= refresh {
             collector.refresh();
             last_refresh = Instant::now();
         }
@@ -146,10 +148,10 @@ fn parse_args() -> Mode {
 }
 
 /// Non-interactive output: sample twice (so rates are populated) then print.
-fn snapshot(json: bool) -> io::Result<()> {
-    let mut c = Collector::new();
+fn snapshot(json: bool, config: &Config) -> io::Result<()> {
+    let mut c = Collector::with_thresholds(config.thresholds);
     c.refresh();
-    std::thread::sleep(REFRESH);
+    std::thread::sleep(Duration::from_secs(config.refresh_secs));
     c.refresh();
     if json {
         // Propagate rather than panic: a NaN/Infinity float would make
@@ -166,9 +168,11 @@ fn snapshot(json: bool) -> io::Result<()> {
 }
 
 fn main() -> io::Result<()> {
-    match parse_args() {
-        Mode::Once => return snapshot(false),
-        Mode::Json => return snapshot(true),
+    let mode = parse_args();
+    let config = Config::load();
+    match mode {
+        Mode::Once => return snapshot(false, &config),
+        Mode::Json => return snapshot(true, &config),
         Mode::Interactive => {}
     }
 
@@ -187,7 +191,7 @@ fn main() -> io::Result<()> {
     }
 
     let mut terminal = setup()?;
-    let result = run(&mut terminal, &shutdown);
+    let result = run(&mut terminal, &shutdown, &config);
     restore();
     result
 }
