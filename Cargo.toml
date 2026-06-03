@@ -17,6 +17,7 @@ sysinfo = "0.30"
 # Supplementary backend for signals sysinfo lacks (battery, AC power, portable
 # CPU temperature). Keep sysinfo primary; systemstat is the cross-platform backstop.
 systemstat = "0.2"
+signal-hook = "0.3"
 
 [profile.release]
 opt-level = "z"

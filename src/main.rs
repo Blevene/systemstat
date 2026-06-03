@@ -7,6 +7,8 @@ mod metrics;
 mod ui;
 
 use std::io::{self, Stdout};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -15,6 +17,7 @@ use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use ratatui::prelude::*;
+use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 
 use metrics::Collector;
 
@@ -36,25 +39,36 @@ fn restore() {
     let _ = execute!(io::stdout(), LeaveAlternateScreen);
 }
 
-fn run(terminal: &mut Term) -> io::Result<()> {
+fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>) -> io::Result<()> {
     let mut collector = Collector::new();
     let mut last_refresh = Instant::now();
     collector.refresh();
 
     loop {
+        // A SIGTERM/SIGINT/SIGHUP sets this; exit so main() can restore the terminal.
+        if shutdown.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+
         terminal.draw(|f| ui::render(f, &collector))?;
 
         // Block at most POLL so the UI stays responsive between refreshes.
-        if event::poll(POLL)? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    let ctrl_c = key.code == KeyCode::Char('c')
-                        && key.modifiers.contains(KeyModifiers::CONTROL);
-                    if ctrl_c || matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) {
-                        return Ok(());
+        match event::poll(POLL) {
+            Ok(true) => {
+                if let Event::Key(key) = event::read()? {
+                    if key.kind == KeyEventKind::Press {
+                        let ctrl_c = key.code == KeyCode::Char('c')
+                            && key.modifiers.contains(KeyModifiers::CONTROL);
+                        if ctrl_c || matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) {
+                            return Ok(());
+                        }
                     }
                 }
             }
+            Ok(false) => {}
+            // A signal interrupts the poll syscall (EINTR); treat as a clean exit.
+            Err(_) if shutdown.load(Ordering::Relaxed) => return Ok(()),
+            Err(e) => return Err(e),
         }
 
         if last_refresh.elapsed() >= REFRESH {
@@ -72,8 +86,15 @@ fn main() -> io::Result<()> {
         default_hook(info);
     }));
 
+    // Restore the terminal on SIGTERM/SIGINT/SIGHUP (e.g. `systemctl stop`, `kill`).
+    // The handler only flips a flag; the run loop polls it and exits cleanly.
+    let shutdown = Arc::new(AtomicBool::new(false));
+    for sig in [SIGTERM, SIGINT, SIGHUP] {
+        signal_hook::flag::register(sig, Arc::clone(&shutdown))?;
+    }
+
     let mut terminal = setup()?;
-    let result = run(&mut terminal);
+    let result = run(&mut terminal, &shutdown);
     restore();
     result
 }
