@@ -19,6 +19,8 @@ const GRAY: Color = Color::Gray;
 
 const LBL: usize = 13;
 
+// Smallest terminal where the bordered dashboard stays legible; below this we
+// show a "too small" notice instead. 2 cols/rows go to the border.
 const MIN_W: u16 = 30;
 const MIN_H: u16 = 8;
 

@@ -40,6 +40,7 @@ fn restore() {
     let _ = execute!(io::stdout(), LeaveAlternateScreen);
 }
 
+/// Rows scrolled per PageUp/PageDown — roughly one dashboard section.
 const PAGE: u16 = 10;
 
 fn run(terminal: &mut Term, shutdown: &Arc<AtomicBool>) -> io::Result<()> {
