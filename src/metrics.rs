@@ -20,6 +20,10 @@ use systemstat::{Platform, System as StatSystem};
 use crate::config::Thresholds;
 
 const HISTORY_LEN: usize = 120;
+/// Re-probe the GPU every N ticks (nvidia-smi forks a process).
+const GPU_PROBE_TICKS: u64 = 5;
+/// Re-resolve the default-route interface every N ticks (forks on macOS).
+const ROUTE_PROBE_TICKS: u64 = 15;
 /// How many processes to keep for the process view / JSON output.
 pub const PROC_LIMIT: usize = 15;
 
@@ -228,9 +232,14 @@ pub struct Collector {
     last_net: Instant,
     /// Highest CPU frequency seen so far — a max-freq fallback off Linux/cpufreq.
     peak_freq_mhz: u64,
-    /// While true, probe for a GPU each tick; cleared after the first miss so
-    /// GPU-less hosts pay only one probe.
+    /// While true, probe for a GPU; cleared after the first miss so GPU-less
+    /// hosts pay only one probe.
     probe_gpu: bool,
+    /// Refresh counter, used to throttle the process-spawning probes
+    /// (GPU / default route) so they don't fork a process every tick.
+    tick: u64,
+    /// Cached default-route interface, refreshed periodically.
+    cached_route: Option<String>,
     thresholds: Thresholds,
     pub metrics: Metrics,
     pub history: History,
@@ -256,6 +265,8 @@ impl Collector {
             last_net: Instant::now(),
             peak_freq_mhz: 0,
             probe_gpu: true,
+            tick: 0,
+            cached_route: None,
             thresholds,
             metrics: Metrics::default(),
             history: History::default(),
@@ -282,6 +293,7 @@ impl Collector {
         self.disks.refresh();
         self.components.refresh();
 
+        let tick = self.tick;
         let t = self.thresholds; // Copy; lets us borrow self.metrics mutably below.
         let m = &mut self.metrics;
 
@@ -353,7 +365,12 @@ impl Collector {
         self.last_net = now;
         // Primary interface: the default route when known, else the busiest
         // non-loopback link (so we don't latch onto a docker/virtual bridge).
-        let primary = primary_iface(&self.networks);
+        // Re-resolve the default route occasionally (it forks a process on macOS
+        // and rarely changes); reuse the cached interface otherwise.
+        if tick % ROUTE_PROBE_TICKS == 0 {
+            self.cached_route = default_route_iface();
+        }
+        let primary = primary_iface(&self.networks, self.cached_route.as_deref());
         if let Some((name, rx, tx)) = primary {
             m.iface = name;
             m.net_recv_kib = rx as f64 / 1024.0 / dt;
@@ -441,8 +458,9 @@ impl Collector {
         procs.sort_by(|a, b| b.cpu.max(b.mem_pct).total_cmp(&a.cpu.max(a.mem_pct)));
         m.procs = procs;
 
-        // ---- GPU (optional; stop probing after the first miss) ----
-        if self.probe_gpu {
+        // ---- GPU (optional; throttled, and stops probing after the first miss
+        // so GPU-less hosts and nvidia-smi forks don't run every tick) ----
+        if self.probe_gpu && tick % GPU_PROBE_TICKS == 0 {
             let gpu = detect_gpu();
             if gpu.is_none() {
                 self.probe_gpu = false;
@@ -478,6 +496,8 @@ impl Collector {
             let sum: f64 = self.history.health.iter().sum();
             self.metrics.stability_avg = sum / self.history.health.len() as f64;
         }
+
+        self.tick = self.tick.wrapping_add(1);
     }
 }
 
@@ -710,7 +730,7 @@ fn is_loopback(name: &str) -> bool {
 }
 
 /// bridge). Returns (name, bytes received this tick, bytes transmitted this tick).
-fn primary_iface(networks: &Networks) -> Option<(String, u64, u64)> {
+fn primary_iface(networks: &Networks, default_route: Option<&str>) -> Option<(String, u64, u64)> {
     // (name, recv_this_tick, sent_this_tick, cumulative_bytes) for real links.
     let mut links: Vec<(String, u64, u64, u64)> = networks
         .iter()
@@ -727,7 +747,7 @@ fn primary_iface(networks: &Networks) -> Option<(String, u64, u64)> {
     if links.is_empty() {
         return None;
     }
-    let pick = default_route_iface()
+    let pick = default_route
         .and_then(|name| links.iter().position(|l| l.0 == name))
         .unwrap_or_else(|| {
             links

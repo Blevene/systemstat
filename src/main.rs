@@ -150,7 +150,7 @@ With no options, runs the interactive dashboard.
 
 KEYS (interactive):
     q, Esc, Ctrl-C       Quit
-    Tab                  Toggle dashboard / process list
+    Tab                  Cycle dashboard / processes / detail
     s                    (process list) sort by CPU / memory
     Up/Down, j/k         Scroll
     PageUp/PageDown      Scroll a page
