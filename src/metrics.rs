@@ -367,7 +367,7 @@ impl Collector {
         // non-loopback link (so we don't latch onto a docker/virtual bridge).
         // Re-resolve the default route occasionally (it forks a process on macOS
         // and rarely changes); reuse the cached interface otherwise.
-        if tick % ROUTE_PROBE_TICKS == 0 {
+        if tick.is_multiple_of(ROUTE_PROBE_TICKS) {
             self.cached_route = default_route_iface();
         }
         let primary = primary_iface(&self.networks, self.cached_route.as_deref());
@@ -460,7 +460,7 @@ impl Collector {
 
         // ---- GPU (optional; throttled, and stops probing after the first miss
         // so GPU-less hosts and nvidia-smi forks don't run every tick) ----
-        if self.probe_gpu && tick % GPU_PROBE_TICKS == 0 {
+        if self.probe_gpu && tick.is_multiple_of(GPU_PROBE_TICKS) {
             let gpu = detect_gpu();
             if gpu.is_none() {
                 self.probe_gpu = false;
