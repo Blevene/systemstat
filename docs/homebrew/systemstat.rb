@@ -7,15 +7,15 @@
 class Systemstat < Formula
   desc "Terminal system-monitor dashboard"
   homepage "https://github.com/Blevene/systemstat"
-  version "0.0.1"
+  version "0.1.0"
 
   on_macos do
     on_arm do
-      url "https://github.com/Blevene/systemstat/releases/download/v0.0.1/systemstat-v0.0.1-aarch64-apple-darwin.tar.gz"
+      url "https://github.com/Blevene/systemstat/releases/download/v0.1.0/systemstat-v0.1.0-aarch64-apple-darwin.tar.gz"
       sha256 "TODO_FILL_AFTER_DARWIN_BUILD"
     end
     on_intel do
-      url "https://github.com/Blevene/systemstat/releases/download/v0.0.1/systemstat-v0.0.1-x86_64-apple-darwin.tar.gz"
+      url "https://github.com/Blevene/systemstat/releases/download/v0.1.0/systemstat-v0.1.0-x86_64-apple-darwin.tar.gz"
       sha256 "TODO_FILL_AFTER_DARWIN_BUILD"
     end
   end
