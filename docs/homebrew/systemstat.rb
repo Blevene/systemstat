@@ -1,9 +1,9 @@
-# Homebrew formula TEMPLATE for systemstat.
+# Homebrew formula for systemstat.
 #
-# This is not yet usable: it needs the macOS (darwin) release tarballs produced
-# once first-class macOS support lands (issue #2). Until then it documents the
-# intended shape. After darwin artifacts exist, fill in the URLs/sha256 and host
-# this in a tap (e.g. Blevene/homebrew-tap).
+# Pinned to the v0.1.0 darwin release tarballs (URLs + sha256 filled in below).
+# To publish: copy this file into a tap (e.g. Blevene/homebrew-tap) so users can
+# `brew install blevene/tap/systemstat`. On each new release, bump `version`, the
+# two URLs, and the two sha256 values (sha256sum the published darwin tarballs).
 class Systemstat < Formula
   desc "Terminal system-monitor dashboard"
   homepage "https://github.com/Blevene/systemstat"
@@ -12,11 +12,11 @@ class Systemstat < Formula
   on_macos do
     on_arm do
       url "https://github.com/Blevene/systemstat/releases/download/v0.1.0/systemstat-v0.1.0-aarch64-apple-darwin.tar.gz"
-      sha256 "TODO_FILL_AFTER_DARWIN_BUILD"
+      sha256 "9314febc6e20bfcdfa059ba75085b374c4b68b77a537d22756d6266d4db9ff24"
     end
     on_intel do
       url "https://github.com/Blevene/systemstat/releases/download/v0.1.0/systemstat-v0.1.0-x86_64-apple-darwin.tar.gz"
-      sha256 "TODO_FILL_AFTER_DARWIN_BUILD"
+      sha256 "adb58313aa9bbaea7610e54d13523b3f527a635cf17da4b07c4abd8ef6effbee"
     end
   end
 
