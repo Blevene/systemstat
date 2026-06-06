@@ -133,9 +133,10 @@ binary, target the `musl` variants (e.g. `aarch64-unknown-linux-musl`).
 - **Debian/Ubuntu (`.deb`):** `cargo install cargo-deb` then `cargo deb` builds a
   package that installs the `systemstat` binary plus docs (the example config and
   systemd unit). Tagged releases also attach a prebuilt `.deb`.
-- **Homebrew:** a formula template lives at `docs/homebrew/systemstat.rb`. macOS
-  (darwin) release tarballs are now built in CI; fill in the per-target `sha256`
-  values from a tagged release and host the formula in a tap to install via `brew`.
+- **Homebrew (macOS):** `docs/homebrew/systemstat.rb` is a ready-to-use formula
+  pinned to the latest darwin release (URLs + checksums filled in). Drop it into a
+  tap (e.g. `Blevene/homebrew-tap`) and install with
+  `brew install blevene/tap/systemstat`.
 
 ## License
 
